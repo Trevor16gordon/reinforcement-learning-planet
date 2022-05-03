@@ -5,12 +5,13 @@ Implimentation of the Gaussian Stochastic State Space Model (SSM)
 """
 
 from typing import Optional, List
+from Models.base import TransitionModel
 from torch import nn
 import torch
 import numpy as np
 
 
-class SSM(nn.Module)
+class SSM(TransitionModel, nn.Module)
     """
         Impliments the Gaussian Stochastic State Space Model as Defined in the paper:
             Learning Latent Dynamics for Planning from Pixels, Hafner et. al. (2019)
@@ -42,6 +43,9 @@ class SSM(nn.Module)
 
     def __init__(
         self,
+        encoder,
+        decoder,
+        obs_dim,
         state_size,
         act_size,
         embed_size,
@@ -51,21 +55,26 @@ class SSM(nn.Module)
         min_stddev=1e-5
     ):
         """
-            state_size: The size of the latent state vector.
-            actOsize: The dimension of the action space. (Assumed to be continuous, but can also use one-hot vectors for discrete action spaces.)
-            embed_size: The size of the embedding layer from the encoder and decoder.  
-            hidden_size: The width of the hidden layers in the network.
+            encoder:     the observation encoder network (Autoencoder)
+            decoder:     the latent space decoder network (Decoder)
+            obs_dim:     The dimenstion of the observation space. Used to validate encoder input.
+            state_size:  The size of the latent state vector.
+            act_size:    The dimension of the action space. (Assumed to be continuous, but can also use one-hot vectors for discrete action spaces.)
+            embed_size:  The size of the embedding layer from the encoder and decoder.  
+            hidden_size: The width of the hidden layers in the networks.
+            belief_size: Dimension of hidden state. NOT USED FOR SSM.
+            activation:  The activation function used in the networks.
+            min_stddev:  lower bound on the predicted latent state variance.
 
             we include the belief size for compatability with the Recurrent state space models, however it is unused.
         """
 
-        self._state_size = state_size 
-        self._act_size = act_size
-        self._embed_size = embed_size
-        self._hidden_dim = hidden_dim
-        self._activation = activation
-        self._min_stddev = min_stddev
-
+        # Call super from the base class to instantiate all model hyper parameters. Then call nn.Module to set up internal models
+        nn.Module.__init__(self)
+        super(SSM, self).__init__(  
+            encoder, decoder, obs_dim, state_size, act_size, embed_size, belief_size, hidden_dim, activation=nn.elu, min_stddev=1e-5
+        )
+        
         # Define the Transition model
         self._transition = nn.Sequential(
             nn.Linear(self._state_size + self_act_size, self._hidden_dim),
@@ -168,4 +177,18 @@ class SSM(nn.Module)
         return torch.empty(0), prior_states, prior_means, prior_stddvs, posterio_states, posterion_means, posterior_stddvs, rewards
 
 
+    def decode(self, latent: torch.Tensor, belief: torch.empty) -> torch.Tensor:
+        """
+            pass the latent state through the decoder. Ignore the belief vector, as this is only included for 
+            cross compatability with the other Transition models.
 
+            For SSM:
+                latent: torch.Tensor with dimensions [batch_size, state_size]
+                belief: when using the SSM, there is no belief state, so this should 
+                        always be torch.empty(0). This is because
+                            torch.cat([latent, belief], dim=1) 
+                        simply returns the latent vector, since concatentating the 
+                        empty tensor leaves the other tensor unchanged.
+        """
+        return self._decoder(latent, belief)
+        
