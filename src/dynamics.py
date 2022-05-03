@@ -6,7 +6,7 @@ import gym
 import numpy as np
 import pdb
 # from environment import make_env
-from stable_baselines3.common.vec_env import DummyVecEnv
+from stable_baselines3.common.vec_env import DummyVecEnv, SubprocVecEnv
 
 class DynamicsBase():
     """Base class for environment dynamics stepping
@@ -64,13 +64,12 @@ class TrueDynamics():
         num_env_state0, env_state_dim = state_0.shape
         assert num_envs == num_env_state0
         h = env_state_dim // 2
+        #envs = SubprocVecEnv([lambda : gym.make(self.env_name) for i in range(num_envs)], start_method="fork")
         envs = DummyVecEnv([lambda : gym.make(self.env_name) for i in range(num_envs)])
-        
-        for i in range(num_envs):
-            env_i = envs.envs[i]
-            qpos, qvel = state_0[i, :h], state_0[i, h:]
-            env_i.reset()
-            env_i.set_state(qpos, qvel)
+        envs.reset()
+
+        # Setting state works if it's all the same arguments
+        envs.env_method("set_state", state_0[0, :h], state_0[0, h:])
 
         resulting_next_states = np.zeros((num_timesteps, num_envs, env_state_dim))
         resulting_rewards = np.zeros((num_timesteps, num_envs))
@@ -78,12 +77,14 @@ class TrueDynamics():
 
         for j in range(num_timesteps):
             actions = actions_multiple_timesteps[j, :, :]
-            next_states, rewards, dones, _ = envs.step(actions)
+            envs.step_async(actions)
+            next_states, rewards, dones, _ = envs.step_wait()
             resulting_next_states[j, :, :] = next_states
             resulting_rewards[j, :] = rewards
             resulting_dones[j, :] = dones
-
+        envs.close()
         return resulting_next_states, resulting_rewards, resulting_dones
+
 
 class ModelPredictiveControl():
 
@@ -94,7 +95,7 @@ class ModelPredictiveControl():
             cost_func (func): Should take in states rewards, dones and determine a scoring for the resulting action
             dynamics (DynamicsBase): Used for rolling out action sequences. Dynamics should return flattened states
         """
-        self.cost_func = cost_func if cost_func is not None else self.cost_func_closest_goal
+        self.cost_func = cost_func if cost_func is not None else self.cost_func_avg_closest_goal
         self.dynamics = dynamics
         self.control_horizon = 10
         self.control_horizon_simulate = 14
@@ -102,7 +103,7 @@ class ModelPredictiveControl():
     def compute_action(self, state, goal):
         return self.compute_action_cross_entropy_method(state, goal)
 
-    def compute_action_cross_entropy_method(self, state, goal, num_iterations=3, j=10, k=3):
+    def compute_action_cross_entropy_method(self, state, goal, num_iterations=3, j=50, k=10):
 
         env_action_dim = self.dynamics.env_action_dim
         env_state_dim = self.dynamics.env_state_dim
@@ -117,7 +118,7 @@ class ModelPredictiveControl():
 
         for iter in range(num_iterations):
 
-            candidate_actions = np.random.normal(means, stds, size=(j,  env_action_dim, num_timesteps))
+            candidate_actions = np.random.normal(loc=means, scale=stds, size=(j,  env_action_dim, num_timesteps))
             candidate_actions = np.swapaxes(candidate_actions, 0, 2)
             candidate_actions = np.swapaxes(candidate_actions, 1, 2)
 
@@ -167,6 +168,21 @@ class ModelPredictiveControl():
         last_state = next_states[-1, :, :]
         return np.linalg.norm(last_state - goal, axis=1)
 
+    def cost_func_avg_closest_goal(self, next_states, rewards, dones, goal):
+        """Returns the euclidian distance to the goal averaged over all states
+
+        Args:
+            next_states (np.array): Shape is (num_timesteps, self.num_env, self.env_state_dim)
+            rewards (np.array): Shape is (num_timesteps, self.num_env, 1)
+            dones (np.array): Shape is (num_timesteps, self.num_env, 1)
+            goal (_type_): _description_
+        
+        Returns
+            rewards (np.array) Shape is (num_envs), 1
+        """
+        ret = np.linalg.norm(np.mean(next_states[:, :, :2]- goal[:2], axis=0), axis=1)
+        return ret
+
 
 
 if __name__ == "__main__":
@@ -174,7 +190,7 @@ if __name__ == "__main__":
     dyn = TrueDynamics("InvertedPendulum-v2")
 
     mpc = ModelPredictiveControl(dyn)
-    mpc.control_horizon_simulate = 14
+    mpc.control_horizon_simulate = 3
 
     state0 = np.zeros((4,1))
     goal = np.array([0, 0, 0, 0])
@@ -192,7 +208,7 @@ if __name__ == "__main__":
     for i in range(nframes):
         #renders the environment
         env.render()
-        best_actions = mpc.compute_action_cross_entropy_method(state, goal, num_iterations=10, j=30, k=10)
+        best_actions = mpc.compute_action_cross_entropy_method(state, goal, num_iterations=5, j=100, k=10)
 
         for j in range(num_to_rollout_at_once):
             action = best_actions[j, :]
