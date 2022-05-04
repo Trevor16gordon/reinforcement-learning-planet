@@ -58,7 +58,7 @@ class ExperienceReplay():
     def __init__(self, 
         action_size, 
         observation_size, 
-        device
+        device,
         bit_depth, 
         size,
         symbolic_env, 

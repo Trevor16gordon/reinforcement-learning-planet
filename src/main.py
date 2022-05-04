@@ -73,7 +73,7 @@ if __name__ == "__main__":
     device = torch.device("cuda")
     
     # set up directory for writing experiment results to.
-    results_dir = os.path.join("results", config["id"])
+    results_dir = os.path.join("results", args.id)
     os.makedirs(results_dir, exist_ok=True)
 
     # Set the initial keys for numpy, torch, and the GPU.
