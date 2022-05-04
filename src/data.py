@@ -1,8 +1,33 @@
 """ 
-Code from https://github.com/Kaixhin/PlaNet/blob/master/memory.py
-"""
-import torch
 
+Code from https://github.com/Kaixhin/PlaNet/blob/master/memory.py
+
+Maintain a memory buffer to track the last N observed transitions
+to later sample for training the state-space models.
+
+we include some pre- and post- processing tools to transform the 
+observations from the range [0,255] and back again, as well as reshaping
+and decreasing the bit-rate of the images. 
+
+"""
+
+import torch
+import cv2
+import numpy as np
+
+def images_to_observation(images, bit_depth):
+    """
+        Preprocess the images prior to returning them from the environment. First convert to 
+    """
+
+    # reshape the images to be of size [64, 64, 3]. Use linear interpolation for downsampling.
+    images = cv2.resize(images, (64, 64), interpolation==cv2.INTER_LINEAR)
+
+    # reshape the images and cast to float Tensor
+    images = torch.Torch(images).transpose(2, 0, 1), dtype=torch.float32)
+
+    # reduce bit rate and return 
+    return preprocess_observtation_(images, bit_depth).unsqueeze(0)
 
 def preprocess_observation_(observation, bit_depth):
     """

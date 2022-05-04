@@ -8,13 +8,14 @@ This model will
 - Use the data loader to get data
 """
 
+from env import GymEnv
 from data import ExperienceReplay
 from Models import SSM
 
 import torch
 from torch import optim, nn
 
-from stable_baselines3.common.vec_env import DummyVecEnv
+# from stable_baselines3.common.vec_env import DummyVecEnv
 from pathlib import Path
 from argparse import Namespace
 import numpy as np
@@ -30,7 +31,7 @@ import gym
 MODEL_DICT = {
     "ssm": SSM,
 }
-GYM_ENVS = [] 
+GYM_ENVS = ["Pendulum-v1", "MountainCar-v0"] 
 CONTROL_SUITE_ENVS = ["ant-v2"]
 
 
@@ -68,7 +69,6 @@ if __name__ == "__main__":
     args = parser.parse_args()
     
     # load in congig file and update with the command line arguments.
-    # convert back to namespace for easier use later.
     with open(f"{args.config_path}/{args.config}.yaml", "r") as config_file:
         config = yaml.safe_load(config_file)
     config.update(vars(args))
@@ -95,7 +95,11 @@ if __name__ == "__main__":
     )
 
     # Select the model to instantiate, and then access its hyperparameters in the config file.
-    model = args.model
-    config[model]["obs_dim"] = env.observation_size, 
-    config[model]["act_size"] = env.action_size, 
-    transition_model = MODEL_DICT[model](**config[model]).to(configi["device"])
+    model_config = config[args.model]
+    model_config["obs_dim"] = env.observation_size, 
+    model_config["act_size"] = env.action_size, 
+    transition_model = MODEL_DICT[args.model](**model_config).to(config["device"])
+
+
+    
+
