@@ -110,7 +110,6 @@ class TransitionModel(ABC):
         posterior: torch.Tensor,
         belief: torch.Tensor,
         observations: torch.Tensor
-        rewards: torch.Tensor
     ):
     """
         Assumes that the model has a defined decoder and reward model instantiated.
@@ -118,11 +117,44 @@ class TransitionModel(ABC):
         Computes the reconstruction loss for the observation model (decoder) 
 
         posterior and belief should be of shape:
+            [horizon, batch_size, state_dim]
+            [horizon, batch_size, belief_dim]
+        
+        observations should be of shape:
+            [horizon, batch_size, *obs_dim]
     """
+        
+        horizon, batch_size, _ = posterior.size()
+        
+        # check if the posterior is the empty vector (RNN state space model)
+        if posterior.nelement() != 0: 
+            posterior = posterior.view(horizon*batch_size, self._state_dim)
 
-        observation_pred = self.
+        # check if the belief is the empty vector (SSM state space model)
+        if belief.nelement() != 0: 
+            belief = belief.view(horizon*batch_size, self._belief_dim)
 
+        observation_pred = self.decode(posterior, belief).view(horizon, batch_size, *self.obs_dim)
+        mse_obs = self.mse(observation_pred, observations) 
+        
+        # mse will be of dimension:
+        #   [horizon, batch_size, *self._obs_dim] (i.e. [horizon, batch_size, 3, 64, 64] in the case of pixel images.
 
+        # sum over pixels/variables. The final n dimensions correspond to single obervation.
+        # then mean over the horizon and batch dimension.
+        mse_obs = mse_obs.sum(dim=[2 + i for i in range(len(self._obs_dim))])
+        mse_obs = mse.mean(dim=[0,1])
+
+        return mse_obs
+    
+    def reward_loss(
+            reward_pred: torch.Torch,
+            reward: torch.Torch
+    ) -> torch.Torch:
+    """
+        Compute the reward prediction loss.
+    """
+        return self.mse(reward_pred, reward).mean(dim=[0,1])
 
     @abstractmethod
     def decode(self, posterior: torch.Tensor, belief: torch.Tensor):
