@@ -7,12 +7,13 @@ Implimentation of the Gaussian Stochastic State Space Model (SSM)
 from typing import Optional, List
 from abc import ABC, abstractmethod
 
+import torch
+import numpy as np
 from torch import nn
 from torch.distributions import Normal
 from torch.distributions.kl import kl_divergence
 
-
-import numpy as np
+from Models.autoencoder import PixelObservationModel, PixelEncoder
 
 class TransitionModel(ABC):
     """
@@ -27,29 +28,29 @@ class TransitionModel(ABC):
     """
 
     def __init__(self, 
-        encoder,
-        decoder,
         obs_dim,
         state_size,
         act_size,
         embed_size,
         belief_size,
         hidden_dim,
-        activation=nn.elu, 
+        activation="elu", 
         min_stddev=1e-5
     ):
-        self._encoder = encoder
-        self.decoder = decoder
+        self._encoder = PixelEncoder(embed_size, obs_dim, activation='ReLU')
+        self.decoder = PixelObservationModel(belief_size, state_size, embed_size, activation='ReLU')
         self._obs_dim = obs_dim
 
         self._state_size = state_size 
         self._act_size = act_size
         self._embed_size = embed_size
         self._hidden_dim = hidden_dim
-        self._activation = activation
         self._min_stddev = min_stddev
 
+        self._activation = getattr(nn, activation)()
         self.mse = nn.MSELoss(reduction="none")
+        self.softplus = nn.Softplus()
+
 
     def encode(self, observations: torch.Tensor) -> torch.Tensor:
         """
@@ -63,18 +64,18 @@ class TransitionModel(ABC):
             and so we first flattent the input, and reshape it upon return.
         """
 
-        reshape = None
-
         # Check if the horizon dimension is present in the data. If so, flatten the observations.
-        if len(self._obs_dim) + 1 < len(observations.size()):
-            reshape = [observations.size()[0], observations.size()[1]]
+        reshape = False
+        size = observations.size()
+        if len(self._obs_dim) + 1 < len(size):
             observations = observations.view(reshape[0]*reshape[1], *self._obs_dim) 
+            reshape = True
 
         embeddings = self._encoder(observations)
         
         # if we have flattened the input, we need to reshap the embeddings to be [horizon, batch_size, embed_size]
-        if reshape is not None:
-            embeddings = embeddings.view(reshape[0], reshape[1], self._embed_size) 
+        if reshape:
+            embeddings = embeddings.view(size[0], size[1], self._embed_size) 
 
         return embeddings 
 
@@ -111,18 +112,18 @@ class TransitionModel(ABC):
         belief: torch.Tensor,
         observations: torch.Tensor
     ):
-    """
-        Assumes that the model has a defined decoder and reward model instantiated.
-    
-        Computes the reconstruction loss for the observation model (decoder) 
-
-        posterior and belief should be of shape:
-            [horizon, batch_size, state_dim]
-            [horizon, batch_size, belief_dim]
+        """
+            Assumes that the model has a defined decoder and reward model instantiated.
         
-        observations should be of shape:
-            [horizon, batch_size, *obs_dim]
-    """
+            Computes the reconstruction loss for the observation model (decoder) 
+
+            posterior and belief should be of shape:
+                [horizon, batch_size, state_dim]
+                [horizon, batch_size, belief_dim]
+            
+            observations should be of shape:
+                [horizon, batch_size, *obs_dim]
+        """
         
         horizon, batch_size, _ = posterior.size()
         
@@ -148,17 +149,13 @@ class TransitionModel(ABC):
         return mse_obs
     
     def reward_loss(
-            reward_pred: torch.Torch,
-            reward: torch.Torch
-    ) -> torch.Torch:
-    """
-        Compute the reward prediction loss.
-    """
+            reward_pred: torch.Tensor,
+            reward: torch.Tensor
+    ) -> torch.Tensor:
+        """ Compute the reward prediction loss. """
         return self.mse(reward_pred, reward).mean(dim=[0,1])
 
     @abstractmethod
     def decode(self, posterior: torch.Tensor, belief: torch.Tensor):
-        """
-            pass the posterior state and belief state through the decoder.
-        """
+        """pass the posterior state and belief state through the decoder."""
         raise NotImplementedError

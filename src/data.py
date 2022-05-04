@@ -16,7 +16,7 @@ def preprocess_observation_(observation, bit_depth):
     observation.div_(2 ** (8 - bit_depth)).floor_().div_(2 **
                                                         bit_depth).sub_(0.5)
     # Dequantise (to approx. match likelihood of PDF of continuous images vs. PMF of discrete images)
-    observation.add_(torch.rand_like(observation).div_(2 ** bit_depth)
+    observation.add_(torch.rand_like(observation).div_(2 ** bit_depth))
 
                     
 def postprocess_observation(observation, bit_depth):
