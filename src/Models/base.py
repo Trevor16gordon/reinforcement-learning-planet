@@ -29,8 +29,8 @@ class TransitionModel(ABC):
 
     def __init__(self, 
         obs_dim,
-        state_size,
         act_size,
+        state_size,
         embed_size,
         belief_size,
         hidden_dim,

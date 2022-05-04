@@ -57,49 +57,53 @@ if __name__ == "__main__":
     
     parser = argparse.ArgumentParser()
 
-    parser.add_argument("--config", type=str, default="base", help="Specify the yaml file to use in setting up experiment.")
-    parser.add_argument("--config-path", type=str, default="Configs", help="Specify the directory the config file lives in.")
     parser.add_argument("--id", type=str, default="default", help="Experiment ID")
     parser.add_argument("--seed", type=int, default=1, metavar="S", help="Random seed")
     parser.add_argument("--env", type=str, default="InvertedPendulum-v2", help="Gym/Control Suite environment")
     parser.add_argument("--model", type=str, default="ssm", choices=["ssm", "rssm", "rnn"], help="Select the State Space Model to Train.")
     parser.add_argument("--render", type=bool, default=False, help="Render environment")
-    parser.add_argument('--symbolic-env', action='store_true', help='Symbolic features')
+    parser.add_argument("--config", type=str, default="base", help="Specify the yaml file to use in setting up experiment.")
+    parser.add_argument("--config-path", type=str, default="Configs", help="Specify the directory the config file lives in.")
     
     args = parser.parse_args()
     
     # load in congig file and update with the command line arguments.
     with open(f"{args.config_path}/{args.config}.yaml", "r") as config_file:
         config = yaml.safe_load(config_file)
-    config.update(vars(args))
+    device = torch.device("cuda")
     
     # set up directory for writing experiment results to.
     results_dir = os.path.join("results", config["id"])
     os.makedirs(results_dir, exist_ok=True)
 
     # Set the initial keys for numpy, torch, and the GPU.
-    np.random.seed(config["seed"])
-    torch.manual_seed(config["seed"])
-    config["device"] = torch.device("cuda")
-    torch.cuda.manual_seed(config["seed"])
+    np.random.seed(args.seed)
+    torch.manual_seed(args.seed)
+    torch.cuda.manual_seed(args.seed)
     
     # instantiate the environment and the Experience replay buffer to collect trajectories.
-    env = DummyVecEnv([lambda : gym.make(config["env"]) for i in range(1)])
+    if args.env in GYM_ENVS:
+        env = GymEnv 
+    else:
+        # create comparable wrapper for control suite tasks
+        raise NotImplimentedError("No Control Suite Wrapper written yet.")
+
+    env = env(
+        args.env, 
+        args.seed,
+        **config["env"],
+    )
     replay_memory = ExperienceReplay(
-        config["memory"]["experience_size"],
-        config["symbolic_env"],
         env.observation_size, 
         env.action_size, 
-        config["memory"]["bit_depth"], 
-        config["device"]
+        device,
+        **config["memory"]
     )
 
     # Select the model to instantiate, and then access its hyperparameters in the config file.
     model_config = config[args.model]
-    model_config["obs_dim"] = env.observation_size, 
-    model_config["act_size"] = env.action_size, 
-    transition_model = MODEL_DICT[args.model](**model_config).to(config["device"])
-
-
-    
-
+    transition_model = MODEL_DICT[args.model](
+        env.observation_size, 
+        env.action_size, 
+        **model_config
+    ).to(device)

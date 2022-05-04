@@ -33,9 +33,18 @@ rssm:
 
 # Memory buffer hyperparameters
 memory:
-  experience_size: 1_000_000
+  size: 1_000_000
   symbolic_env: False
   bit_depth: 5
+
+
+# environments hyperparameters
+env:
+  symbolic_env: False
+  max_episode_length: 1000
+  action_repeat: 2 
+  bit_depth: 5
+ 
 
 # Training hyperparameters
 train:
@@ -52,6 +61,7 @@ train:
   overshooting_kl_beta: 0
   overshooting_distance: 50
 
+
 # Model Predictive Control Hyperparameters
 mpc:
   planning_horizon: 12
@@ -59,6 +69,8 @@ mpc:
   candidates: 1_000
   top_candidates: 100
 
+
+   
 # Miscellanious parameters for data collection
 # experiment tracking, and experiment set-up
 test_interval: 50
@@ -67,7 +79,5 @@ checkpoint_interval: 50
 
 episodes: 1000
 seed_episodes: 5
-max_episode_length: 1000
 
 action_noise: 0.3
-action_repeat: 2

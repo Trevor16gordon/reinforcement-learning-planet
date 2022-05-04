@@ -2,7 +2,8 @@ import cv2
 import logging
 
 import gym
-from gym import PixelObservationWrapper, spaces
+from gym import spaces
+from gym.wrappers.pixel_observation import PixelObservationWrapper
 
 import numpy as np
 import torch
@@ -20,8 +21,8 @@ class GymEnv:
     def __init__(
         self,
         env: str,
-        symbolic: bool,
         seed: int, 
+        symbolic: bool,
         max_episode_length: int, 
         action_repeat: int, 
         bit_depth: int

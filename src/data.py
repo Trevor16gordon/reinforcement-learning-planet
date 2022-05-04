@@ -21,10 +21,10 @@ def images_to_observation(images, bit_depth):
     """
 
     # reshape the images to be of size [64, 64, 3]. Use linear interpolation for downsampling.
-    images = cv2.resize(images, (64, 64), interpolation==cv2.INTER_LINEAR)
+    images = cv2.resize(images, (64, 64), interpolation==cv2.INTER_LINEAR).transpose(2, 0, 1)
 
     # reshape the images and cast to float Tensor
-    images = torch.Torch(images).transpose(2, 0, 1), dtype=torch.float32)
+    images = torch.Torch(images, dtype=torch.float32)
 
     # reduce bit rate and return 
     return preprocess_observtation_(images, bit_depth).unsqueeze(0)
@@ -55,7 +55,14 @@ def postprocess_observation(observation, bit_depth):
 
 class ExperienceReplay():
 
-    def __init__(self, size, symbolic_env, observation_size, action_size, bit_depth, device):
+    def __init__(self, 
+        action_size, 
+        observation_size, 
+        device
+        bit_depth, 
+        size,
+        symbolic_env, 
+    ):
         self.device = device
         self.symbolic_env = symbolic_env
         self.size = size
