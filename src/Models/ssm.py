@@ -11,7 +11,7 @@ import torch
 import numpy as np
 
 
-class SSM(TransitionModel, nn.Module)
+class SSM(TransitionModel, nn.Module):
     """
         Impliments the Gaussian Stochastic State Space Model as Defined in the paper:
             Learning Latent Dynamics for Planning from Pixels, Hafner et. al. (2019)
@@ -43,20 +43,16 @@ class SSM(TransitionModel, nn.Module)
 
     def __init__(
         self,
-        encoder,
-        decoder,
         obs_dim,
         state_size,
         act_size,
         embed_size,
         belief_size,
         hidden_dim,
-        activation=nn.elu, 
+        activation="ELU", 
         min_stddev=1e-5
     ):
         """
-            encoder:     the observation encoder network (Autoencoder)
-            decoder:     the latent space decoder network (Decoder)
             obs_dim:     The dimenstion of the observation space. Used to validate encoder input.
             state_size:  The size of the latent state vector.
             act_size:    The dimension of the action space. (Assumed to be continuous, but can also use one-hot vectors for discrete action spaces.)
@@ -72,54 +68,52 @@ class SSM(TransitionModel, nn.Module)
         # Call super from the base class to instantiate all model hyper parameters. Then call nn.Module to set up internal models
         nn.Module.__init__(self)
         super(SSM, self).__init__(  
-            encoder, decoder, obs_dim, state_size, act_size, embed_size, belief_size, hidden_dim, activation=nn.elu, min_stddev=1e-5
+            obs_dim, state_size, act_size, embed_size, belief_size, hidden_dim, activation, min_stddev
         )
         
         # Define the Transition model
         self._transition = nn.Sequential(
             nn.Linear(self._state_size + self_act_size, self._hidden_dim),
-            self._activation()
+            self._activation(),
             nn.Linear(self._hidden_dim, 2 * self._state_size)
         )
 
         # Define the Posterior model
         self._posterior = nn.Sequential(
             nn.Linear(self._state_size + self_act_size + self._embed_size, self._hidden_dim),
-            self._activation()
+            self._activation(),
             nn.Linear(self._hidden_dim, 2 * self._state_size)
         )
 
         # Define the Reward model
         self._reward = nn.Sequential(
             nn.Linear(self._state_size, self._hidden_dim),
-            self._activation()
-            nn.Linear(self._hidden_dim, self._hidden_dim)
-            self._activation()
+            self._activation(),
+            nn.Linear(self._hidden_dim, self._hidden_dim),
+            self._activation(),
             nn.Linear(self._hidden_dim, 1)
         )
 
-        self.softplus = nn.Softplus()
-
-
-    def forward(self, 
+    def forward(
+        self, 
         prev_state: torch.Tensor,
         actions: torch.Tensor,
         prev_beliefs: Optional[torch.Tensor] = None, 
-        observations: Optional[torch.Tensor]=None,
+        observations: Optional[torch.Tensor] = None,
         non_terminals: Optional[torch.Tensor] = None
     ) -> List[torch.Tensor]:
         """
             Forward operates in two modes:
-                Generative:
-                    We have access to the previos state (prev_state), and we want to generate a sequence of
-                    prior states; i.e. sample a sequence in the latent space.
-                    In this mode, non_terminals, and observations will be None, and so we do not generate 
-                    posterior values.
+            Generative:
+                We have access to the previos state (prev_state), and we want to generate a sequence of
+                prior states; i.e. sample a sequence in the latent space.
+                In this mode, non_terminals, and observations will be None, and so we do not generate 
+                posterior values.
 
-                Training:
-                    We DO have access to the ground truth observations as well as the non_terminal values.
-                    This is training mode, so we perform both generative modeling with the transition model,
-                    and inference using the posterior model.
+            Training:
+                We DO have access to the ground truth observations as well as the non_terminal values.
+                This is training mode, so we perform both generative modeling with the transition model,
+                and inference using the posterior model.
 
             prev_state:     torch.Tensor[seq_length, batch_size, state_size] 
             actions:        torch.Tensor[seq_length, batch_size, act_size] 
@@ -140,9 +134,9 @@ class SSM(TransitionModel, nn.Module)
                 rewards:            torch.Tensor[seq_length, batch_size]
 
         """
-    
+
         horizon = actions.size[0] + 1 # plus 1 for the previous state
-        
+
         # create empty lists to store the model predictions. Note that we cannot use
         # a single tensor of length horizon, as autograd does not back prop through inplace writes.
         prior_states = [torch.empty(0)] * horizon
@@ -158,12 +152,11 @@ class SSM(TransitionModel, nn.Module)
         # the first prior and posterior state will be the previous observations
         prior_states[0] = prev_state
         posterior_states[0] = prev_state
-        
+
         non_terminal = non_terminals if non_terminals is not None else torch.ones(horizon) 
 
         # predict a sequence off length action.size()
         for t in range(horizon-1):
-
             # If we have the observations, use the posterior state as the input to the transition model. (the inferred state from prior observation)
             # otherwise, use the prior state (this occurs when the model is performing generative modeling)
             current_state = prior_states[t] if observations is None else posterior_states[t]
@@ -184,9 +177,9 @@ class SSM(TransitionModel, nn.Module)
                 posterior_states[t + 1] = posterior_means[t+1] + torch.randn_like(posterior_means[t+1]) * posterior_stddvs[t + 1] 
 
             rewards[t + 1] = self._reward(prior_states[t+1] if observations is None else posterior_states[t+1])
-        
+
         # we return an empty tensor for compatiability with the recurrent states space models which require this value.
-        return torch.empty(0), prior_states, prior_means, prior_stddvs, posterio_states, posterion_means, posterior_stddvs, rewards
+        return torch.empty(0), prior_states, prior_means, prior_stddvs, posterior_states, posterior_means, posterior_stddvs, rewards
 
 
     def decode(self, latent: torch.Tensor, belief: torch.empty) -> torch.Tensor:
@@ -195,11 +188,23 @@ class SSM(TransitionModel, nn.Module)
             cross compatability with the other Transition models.
 
             For SSM:
-                latent: torch.Tensor with dimensions [batch_size, state_size]
+                latent: torch.Tensor with dimensions [horizon, batch_size, state_size]
                 belief: when using the SSM, there is no belief state, so this should 
                         always be torch.empty(0). This is because
                             torch.cat([latent, belief], dim=1) 
                         simply returns the latent vector, since concatentating the 
                         empty tensor leaves the other tensor unchanged.
         """
-        return self._decoder(latent, belief)
+        # check to see if we need to reshape the input.
+        size = latent.size()
+        reshape = False
+        if 2 < len(size):
+            latent = latent.view(size[0]*size[1], size[3])
+            reshape = True
+
+        observations = self._decoder(latent, belief)
+        
+        # if we flattened the input, we need to return to original dimenstions.
+        if reshape:
+            observations = observations.view(size[0], size[1], *self._obs_dim)
+        return observations
