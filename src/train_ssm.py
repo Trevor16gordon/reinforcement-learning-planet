@@ -8,33 +8,40 @@ This model will
 - Use the data loader to get data
     - Data should be compressed using the VAE before training
 """
-from config import GlobalConfig, SSMConfig
+from stable_baselines3.common.vec_env import DummyVecEnv
+from config import GlobalConfig, SSMConfig, TrainingConfig
 from pathlib import Path
+from data import ExperienceReplay
+import numpy as np
 import argparse
 import os
 import glob
 import time
-
+import cv2
+import gym
 
 def train(args):
 
-    # Make new sub folder for this particular run
-    this_time_folder = os.path.join(args.model_dir, time.strftime("%Y-%m-%d_%H-%M-%S"))
-    Path(this_time_folder).mkdir(parents=True, exist_ok=True)
 
-    if args.model_in_folder:
-        this_time_folder = args.model_in_folder
-        joined_path = os.path.join(args.model_in_folder, "*_generator_model.h5")
-        poss_files = glob.glob(joined_path)
-        latest_i = max([int(os.path.split(x)[1].split("_")[0]) for x in poss_files])
-
-        #TODO: Load model weights from existing
-        offset = latest_i
-    else:
-        offset = 0
+    D = ExperienceReplay(args.experience_replay_size, False, 0, 1, 8, "cpu")
 
 
-    #TODO: Main training loop
+    env_name = "InvertedPendulum-v2"
+    num_envs = 1
+    env = DummyVecEnv([lambda : gym.make(env_name) for i in range(num_envs)])
+
+
+    state = env.reset()
+    for i in range(args.batch_size):
+        action = np.stack([env.action_space.sample() for _ in range(num_envs)]) # Shape is (num_envs, action_dim)
+        next_state, reward, done, info  = env.step(action)
+        obsv_i = env.get_images()[0]
+        obsv_i = cv2.resize(obsv_i,  dsize=(64, 64))
+        obsv_i = np.swapaxes(obsv_i, 0, 2)
+        D.append(obsv_i, action[0, 0], reward[0], False)
+
+
+    
 
     
 if __name__ == "__main__":
@@ -50,6 +57,8 @@ if __name__ == "__main__":
                         default=GlobalConfig.get("MODEL_DIR"))
     parser.add_argument("--batch_size", required=False, type=int,
                         default=SSMConfig.BATCH_SIZE)
+    parser.add_argument("--experience_replay_size", required=False, type=int,
+                        default=TrainingConfig.EXPERIENCE_REPLAY_SIZE)
     parser.add_argument("--model_in_folder", required=False,
         help="Path to a folder containing disc / generator weights. The latest one will be loaded.")
     args = parser.parse_args()
