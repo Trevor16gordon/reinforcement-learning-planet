@@ -121,12 +121,24 @@ class SSM(TransitionModel, nn.Module)
                     This is training mode, so we perform both generative modeling with the transition model,
                     and inference using the posterior model.
 
-            pre_state:      torch.Tensor[seq_length, batch_size, state_size] 
+            prev_state:     torch.Tensor[seq_length, batch_size, state_size] 
             actions:        torch.Tensor[seq_length, batch_size, act_size] 
+            prev_beliefs:   torch.Tensor[seq_length, batch_size, belief_size] 
             observations:   torch.Tensor[seq_length, batch_size, embed_size] 
             non_terminals:  torch.Tensor[seq_length, batch_size, 1] 
 
             In generative mode, the batch dimension will be ommited.
+
+            Returns:
+                beliefs:            For the SSM this is simply the empty tensor. 
+                prior_states:       torch.Tensor[seq_length, batch_size, state_size] 
+                prior_means:        torch.Tensor[seq_length, batch_size, state_size] 
+                prior_stds:         torch.Tensor[seq_length, batch_size, state_size] 
+                posterior_states:   torch.Tensor[seq_length, batch_size, state_size] 
+                posterior_means:    torch.Tensor[seq_length, batch_size, state_size] 
+                posterior_stds:     torch.Tensor[seq_length, batch_size, state_size] 
+                rewards:            torch.Tensor[seq_length, batch_size]
+
         """
     
         horizon = actions.size[0] + 1 # plus 1 for the previous state
@@ -191,4 +203,3 @@ class SSM(TransitionModel, nn.Module)
                         empty tensor leaves the other tensor unchanged.
         """
         return self._decoder(latent, belief)
-        

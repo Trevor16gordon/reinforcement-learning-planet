@@ -45,6 +45,7 @@ class TransitionModel(ABC):
         self._state_size = state_size 
         self._act_size = act_size
         self._embed_size = embed_size
+        self._belief_size = belief_size 
         self._hidden_dim = hidden_dim
         self._activation = activation
         self._min_stddev = min_stddev
