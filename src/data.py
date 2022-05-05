@@ -86,16 +86,19 @@ class ExperienceReplay():
           self.observations[self.idx] = observation
         else:
           # Decentre and discretise visual observations (to save memory)
-          self.observations[self.idx] = postprocess_observation(
-              observation, self.bit_depth
-            )
+          self.observations[self.idx] = postprocess_observation(observation, self.bit_depth)
 
         self.actions[self.idx] = action
         self.rewards[self.idx] = reward
         self.nonterminals[self.idx] = not done
+
+        # wrap around to the start of the array (FIFO queue)
         self.idx = (self.idx + 1) % self.size
         self.full = self.full or self.idx == 0
-        self.steps, self.episodes = self.steps + 1, self.episodes + (1 if done else 0)
+        self.steps = self.steps + 1 
+
+        # track number of episodes collected 
+        self.episodes = self.episodes + (1 if done else 0)
 
     # Returns an index for a valid single sequence chunk uniformly sampled from the memory
     def _sample_idx(self, L):

@@ -1,5 +1,5 @@
-import cv2
 import logging
+from abc import ABC, abstractmethod
 
 import gym
 from gym import spaces
@@ -7,11 +7,45 @@ from gym.wrappers.pixel_observation import PixelObservationWrapper
 
 import numpy as np
 import torch
+import cv2
 
 from data import images_to_observation
 
 
-class GymEnv:
+class BaseEnv(ABC):
+    """
+        Base Class to ensure that all our environments share the same necessary methods and properties. 
+    """
+
+    @abstractmethod
+    def render(self):
+        raise NotImplementedError
+
+    @abstractmethod
+    def close(self):
+        raise NotImplementedError
+
+    @abstractmethod
+    def sample_random_action(self):
+        raise NotImplementedError
+
+    @property
+    @abstractmethod
+    def observation_size(self):
+        raise NotImplementedError
+
+    @property
+    @abstractmethod
+    def action_size(self):
+        raise NotImplementedError
+
+    @property
+    @abstractmethod
+    def action_range(self):
+        raise NotImplementedError
+
+
+class GymEnv(BaseEnv):
     """
         Wrap standard gym environments with the pixel observation wrapper. 
         Preprocess the returned images using the images_to_obervation
@@ -22,7 +56,7 @@ class GymEnv:
         self,
         env: str,
         seed: int, 
-        symbolic: bool,
+        symbolic_env: bool,
         max_episode_length: int, 
         action_repeat: int, 
         bit_depth: int
@@ -34,7 +68,7 @@ class GymEnv:
         # to access pixel level observations of the env.
         self._env = gym.make(env)
         self._env.seed(seed)
-        self._env = PixelObservationWrapper(self._env, render_kwargs={mode:'rgb_array'})
+        self._env = PixelObservationWrapper(self._env, render_kwargs={'mode':'rgb_array'})
 
         self.symbolic = symbolic
         self.max_episode_length = max_episode_length
@@ -87,4 +121,4 @@ class GymEnv:
 
     # Sample an action randomly from a uniform distribution over all valid actions
     def sample_random_action(self):
-        return self._env.action_space.sample()
+        return np.array(self._env.action_space.sample())

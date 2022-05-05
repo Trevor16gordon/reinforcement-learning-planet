@@ -11,6 +11,7 @@ This model will
 from env import GymEnv
 from data import ExperienceReplay
 from Models import SSM
+from utils import gather_data
 
 import torch
 from torch import optim, nn
@@ -35,31 +36,13 @@ GYM_ENVS = ["Pendulum-v1", "MountainCar-v0"]
 CONTROL_SUITE_ENVS = ["ant-v2"]
 
 
-def gather_data(env, memory: ExperienceReplay, n_trajectories: int = 5) -> None:
-    """
-        Gather N trajectories using random actions and add the transitions to the 
-        experience replay memory.
-    """
-    
-    for _ in range(n_trajectories):
-        state = env.reset()
-        done = False
-        while not done: 
-            action = np.stack([env.action_space.sample() for _ in range(num_envs)]) # Shape is (num_envs, action_dim)
-            next_state, reward, done, info  = env.step(action)
-            obsv_i = env.get_images()[0]
-            obsv_i = cv2.resize(obsv_i,  dsize=(64, 64))
-            obsv_i = np.swapaxes(obsv_i, 0, 2)
-            memory.append(obsv_i, action[0, 0], reward[0], False)
-    
-
 if __name__ == "__main__":
     
     parser = argparse.ArgumentParser()
 
     parser.add_argument("--id", type=str, default="default", help="Experiment ID")
     parser.add_argument("--seed", type=int, default=1, metavar="S", help="Random seed")
-    parser.add_argument("--env", type=str, default="InvertedPendulum-v2", help="Gym/Control Suite environment")
+    parser.add_argument("--env", type=str, default="Pendulum-v1", help="Gym/Control Suite environment")
     parser.add_argument("--model", type=str, default="ssm", choices=["ssm", "rssm", "rnn"], help="Select the State Space Model to Train.")
     parser.add_argument("--render", type=bool, default=False, help="Render environment")
     parser.add_argument("--config", type=str, default="base", help="Specify the yaml file to use in setting up experiment.")
@@ -86,7 +69,7 @@ if __name__ == "__main__":
         env = GymEnv 
     else:
         # create comparable wrapper for control suite tasks
-        raise NotImplimentedError("No Control Suite Wrapper written yet.")
+        raise NotImplementedError("No Control Suite Wrapper written yet.")
 
     env = env(
         args.env, 
