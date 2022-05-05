@@ -68,6 +68,7 @@ class GymEnv(BaseEnv):
         # to access pixel level observations of the env.
         self._env = gym.make(env)
         self._env.seed(seed)
+        self._env.reset()
         self._env = PixelObservationWrapper(self._env, render_kwargs={'mode':'rgb_array'})
 
         self.symbolic = symbolic_env
@@ -96,11 +97,12 @@ class GymEnv(BaseEnv):
             if done or self.t == self.max_episode_length:
                 break
 
-        observation = _images_to_observation(state["pixels"], self.bit_depth)
+        observation = images_to_observation(state["pixels"], self.bit_depth)
         return observation, reward, done
 
     # pass calls the underlying gym environment.
     def render(self):
+        pass
         self._env.render()
 
     def close(self):
@@ -113,7 +115,10 @@ class GymEnv(BaseEnv):
 
     @property
     def action_size(self):
-        return self._env.action_space.shape[0]
+        act_shape = self._env.action_space.shape
+        if 1 <= len(act_shape):
+            return act_shape[0]
+        return 1
 
     @property
     def action_range(self):

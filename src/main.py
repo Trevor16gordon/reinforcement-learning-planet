@@ -42,7 +42,7 @@ if __name__ == "__main__":
 
     parser.add_argument("--id", type=str, default="default", help="Experiment ID")
     parser.add_argument("--seed", type=int, default=1, metavar="S", help="Random seed")
-    parser.add_argument("--env", type=str, default="Pendulum-v1", help="Gym/Control Suite environment")
+    parser.add_argument("--env", type=str, default="MountainCar-v0", help="Gym/Control Suite environment")
     parser.add_argument("--model", type=str, default="ssm", choices=["ssm", "rssm", "rnn"], help="Select the State Space Model to Train.")
     parser.add_argument("--render", type=bool, default=False, help="Render environment")
     parser.add_argument("--config", type=str, default="base", help="Specify the yaml file to use in setting up experiment.")
@@ -93,3 +93,5 @@ if __name__ == "__main__":
         env.action_size, 
         **model_config
     ).to(device)
+
+    gather_data(env, memory, n_trajectories)

@@ -109,6 +109,7 @@ class TransitionModel(ABC):
         return kl_loss.mean(dim=(0,1))
 
     def observation_loss(
+        self,
         posterior: torch.Tensor,
         belief: torch.Tensor,
         observations: torch.Tensor
@@ -145,13 +146,14 @@ class TransitionModel(ABC):
         # sum over pixels/variables. The final n dimensions correspond to single obervation.
         # then mean over the horizon and batch dimension.
         mse_obs = mse_obs.sum(dim=[2 + i for i in range(len(self._obs_dim))])
-        mse_obs = mse.mean(dim=[0,1])
+        mse_obs = self.mse.mean(dim=[0,1])
 
         return mse_obs
     
     def reward_loss(
-            reward_pred: torch.Tensor,
-            reward: torch.Tensor
+        self
+        reward_pred: torch.Tensor,
+        reward: torch.Tensor
     ) -> torch.Tensor:
         """ Compute the reward prediction loss. """
         return self.mse(reward_pred, reward).mean(dim=[0,1])

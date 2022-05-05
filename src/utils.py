@@ -6,8 +6,9 @@ This file is intended to be a catch all for misc functions
 
 import numpy
 from data import ExperienceReplay
+from env import BaseEnv
 
-def gather_data(env, memory: ExperienceReplay, n_trajectories: int = 5) -> None:
+def gather_data(env: BaseEnv, memory: ExperienceReplay, n_trajectories: int = 5) -> None:
     """
         Gather N trajectories using random actions and add the transitions to the 
         experience replay memory.
