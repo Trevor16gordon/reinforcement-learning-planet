@@ -73,14 +73,14 @@ class SSM(TransitionModel, nn.Module):
         
         # Define the Transition model
         self._transition = nn.Sequential(
-            nn.Linear(self._state_size + self_act_size, self._hidden_dim),
+            nn.Linear(self._state_size + self._act_size, self._hidden_dim),
             self._activation(),
             nn.Linear(self._hidden_dim, 2 * self._state_size)
         )
 
         # Define the Posterior model
         self._posterior = nn.Sequential(
-            nn.Linear(self._state_size + self_act_size + self._embed_size, self._hidden_dim),
+            nn.Linear(self._state_size + self._act_size + self._embed_size, self._hidden_dim),
             self._activation(),
             nn.Linear(self._hidden_dim, 2 * self._state_size)
         )

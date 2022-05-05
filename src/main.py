@@ -32,7 +32,7 @@ import gym
 MODEL_DICT = {
     "ssm": SSM,
 }
-GYM_ENVS = ["Pendulum-v1", "MountainCar-v0"] 
+GYM_ENVS = ["InvertedPendulum-v2", "Pendulum-v1", "MountainCar-v0"] 
 CONTROL_SUITE_ENVS = ["ant-v2"]
 
 
@@ -77,10 +77,12 @@ if __name__ == "__main__":
         **config["env"],
     )
     replay_memory = ExperienceReplay(
-        env.observation_size, 
         env.action_size, 
+        env.observation_size,
         device,
-        **config["memory"]
+        config["memory"]["bit_depth"], 
+        config["memory"]["size"],
+        config["memory"]["symbolic_env"]
     )
 
     # Select the model to instantiate, and then access its hyperparameters in the config file.

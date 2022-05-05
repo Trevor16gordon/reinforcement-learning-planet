@@ -7,7 +7,7 @@ class PixelEncoder(nn.Module):
 
     __constants__ = ['embedding_size']
 
-    def __init__(self, embed_size, obs_dim, activation='ReLU'):
+    def __init__(self, embedding_size, obs_dim, activation='ReLU'):
         """
             The Pixel encoder takes input of dimension [3. 64, 64]. This ensures 
             that  the output of the final convolution will be of shape [256, 2, 2], which 
@@ -21,7 +21,7 @@ class PixelEncoder(nn.Module):
 
         super().__init__()
 
-        self.embedding_size = embed_size
+        self.embedding_size = embedding_size
         self._obs_dim = obs_dim
         kernel = 4
         stride = 2
@@ -43,7 +43,7 @@ class PixelEncoder(nn.Module):
             else nn.Linear(self.flatten_width, embedding_size)
         )
 
-        self.act_fn = getattr(nn, activation_function)()
+        self.act_fn = getattr(nn, activation)()
 
     def forward(self, observation):
         x = observation
@@ -55,7 +55,7 @@ class PixelEncoder(nn.Module):
 class PixelObservationModel(nn.Module):
     __constants__ = ['embedding_size']
 
-    def __init__(self, belief_size, state_size, embed_size, activation='ReLU'):
+    def __init__(self, belief_size, state_size, embedding_size, activation='ReLU'):
         """
             The observation model acts as a decoder network to predict pixel level values from the 
             current model values. This makes it slightly different from a normal AutoEncoder or VAE
@@ -66,7 +66,7 @@ class PixelObservationModel(nn.Module):
         super().__init__()
         # inital embedding layer.
         self.fc1 = nn.Linear(belief_size + state_size, embedding_size)
-        self.embedding_size = embed_size
+        self.embedding_size = embedding_size
 
         self.conv1 = nn.ConvTranspose2d(embedding_size, 128, 5, stride=2)
         self.conv2 = nn.ConvTranspose2d(128, 64, 5, stride=2)
@@ -84,4 +84,4 @@ class PixelObservationModel(nn.Module):
         for conv in self.conv_layers:
             x = self.act_fn(conv(x))
 
-        return self.conv4(hidden)
+        return self.conv4(x)

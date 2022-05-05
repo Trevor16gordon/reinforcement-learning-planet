@@ -70,7 +70,7 @@ class GymEnv(BaseEnv):
         self._env.seed(seed)
         self._env = PixelObservationWrapper(self._env, render_kwargs={'mode':'rgb_array'})
 
-        self.symbolic = symbolic
+        self.symbolic = symbolic_env
         self.max_episode_length = max_episode_length
         self.action_repeat = action_repeat
         self.bit_depth = bit_depth

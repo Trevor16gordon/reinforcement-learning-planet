@@ -48,7 +48,7 @@ class TransitionModel(ABC):
         self._hidden_dim = hidden_dim
         self._min_stddev = min_stddev
 
-        self._activation = getattr(nn, activation)()
+        self._activation = getattr(nn, activation)
         self.mse = nn.MSELoss(reduction="none")
         self.softplus = nn.Softplus()
 
