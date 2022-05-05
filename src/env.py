@@ -69,6 +69,7 @@ class GymEnv(BaseEnv):
         self._env = gym.make(env)
         self._env.seed(seed)
         self._env = PixelObservationWrapper(self._env, render_kwargs={'mode':'rgb_array'})
+        self.t = 0
 
         self.symbolic = symbolic_env
         self.max_episode_length = max_episode_length
@@ -83,7 +84,9 @@ class GymEnv(BaseEnv):
 
 
     def step(self, action):
-        action = action.detach().numpy()
+
+        if torch.is_tensor(action):
+            action = action.detach().numpy()
 
         # If we are repeating actions in the EVN, then the return reward
         # is the sum of the recieved rewards over the time frame
@@ -105,6 +108,9 @@ class GymEnv(BaseEnv):
 
     def close(self):
         self._env.close()
+
+    def reset(self):
+        return self._env.reset()
 
     @property
     def observation_size(self):

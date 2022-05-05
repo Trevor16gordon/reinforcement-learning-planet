@@ -93,3 +93,12 @@ if __name__ == "__main__":
         env.action_size, 
         **model_config
     ).to(device)
+    
+
+
+    # Start by filling training buffer
+    while not replay_memory.full:
+        gather_data(env, replay_memory, 1)
+
+
+    # Start main training loop
