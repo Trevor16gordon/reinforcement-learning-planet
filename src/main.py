@@ -53,7 +53,8 @@ if __name__ == "__main__":
     # load in congig file and update with the command line arguments.
     with open(f"{args.config_path}/{args.config}.yaml", "r") as config_file:
         config = yaml.safe_load(config_file)
-    device = torch.device("cuda")
+    device_name = "cuda" if torch.cuda.is_available() else "cpu"
+    device = torch.device(device_name)
     
     # set up directory for writing experiment results to.
     results_dir = os.path.join("results", args.id)
