@@ -10,7 +10,6 @@ from torch import nn
 import torch
 import numpy as np
 
-
 class SSM(TransitionModel, nn.Module):
     """
         Impliments the Gaussian Stochastic State Space Model as Defined in the paper:
@@ -45,17 +44,19 @@ class SSM(TransitionModel, nn.Module):
         self,
         obs_dim,
         act_size,
+        device,
         state_size,
         embed_size,
         belief_size,
         hidden_dim,
         activation="ELU", 
-        min_stddev=1e-5
+        min_stddev=1e-1
     ):
         """
             obs_dim:     The dimenstion of the observation space. Used to validate encoder input.
-            state_size:  The size of the latent state vector.
             act_size:    The dimension of the action space. (Assumed to be continuous, but can also use one-hot vectors for discrete action spaces.)
+            device:      The device that the model is running on (cpu or gpu)
+            state_size:  The size of the latent state vector.
             embed_size:  The size of the embedding layer from the encoder and decoder.  
             hidden_size: The width of the hidden layers in the networks.
             belief_size: Dimension of hidden state. NOT USED FOR SSM.
@@ -68,7 +69,7 @@ class SSM(TransitionModel, nn.Module):
         # Call super from the base class to instantiate all model hyper parameters. Then call nn.Module to set up internal models
         nn.Module.__init__(self)
         super(SSM, self).__init__(  
-            obs_dim, state_size, act_size, embed_size, belief_size, hidden_dim, activation, min_stddev
+            obs_dim, act_size, device, state_size, embed_size, belief_size, hidden_dim, activation, min_stddev
         )
         
         # Define the Transition model
@@ -135,7 +136,7 @@ class SSM(TransitionModel, nn.Module):
 
         """
 
-        horizon = actions.size[0] + 1 # plus 1 for the previous state
+        horizon = actions.size(0) + 1 # plus 1 for the previous state
 
         # create empty lists to store the model predictions. Note that we cannot use
         # a single tensor of length horizon, as autograd does not back prop through inplace writes.
@@ -164,22 +165,31 @@ class SSM(TransitionModel, nn.Module):
 
             # compute prior distribution of next state
             prior_input = torch.cat([current_state, actions[t]], dim=1)
-            prior_means[t + 1], prior_stddvs = torch.chunk(self._transition(prior_input), 2, dim = 1)
-            prior_stddvs[t + 1] = self.softplus(prior_stddvs) + self._min_stddev
+            prior_means[t + 1], prior_log_stddvs = torch.chunk(self._transition(prior_input), 2, dim = 1)
+            prior_stddvs[t + 1] = self.softplus(prior_log_stddvs) + self._min_stddev
             prior_states[t + 1] = prior_means[t+1] + torch.randn_like(prior_means[t+1]) * prior_stddvs[t + 1] 
 
             # if we have access to the observations, then we are in training mode, and we need to compute the posterior states.
             if observations is not None:
                 # the posterior model takes the prior state and action, as well as the current observation.
                 posterior_input = torch.cat([observations[t], current_state, actions[t]], dim=1)
-                posterior_means[t + 1], posterior_stddvs = torch.chunk(self._transition(posterior_input), 2, dim = 1)
-                posterior_stddvs[t + 1] = self.softplus(posterior_stddvs) + self._min_stddev
+                posterior_means[t + 1], posterior_log_stddvs = torch.chunk(self._posterior(posterior_input), 2, dim = 1)
+                posterior_stddvs[t + 1] = self.softplus(posterior_log_stddvs) + self._min_stddev
                 posterior_states[t + 1] = posterior_means[t+1] + torch.randn_like(posterior_means[t+1]) * posterior_stddvs[t + 1] 
 
             rewards[t + 1] = self._reward(prior_states[t+1] if observations is None else posterior_states[t+1])
+        
+        # stack the list to convert to vextor, and remove redunct indices. Note thate the first element of the list is never update.
+        prior_states = torch.stack(prior_states[1:], dim=0)
+        prior_means = torch.stack(prior_means[1:], dim=0)
+        prior_stddvs = torch.stack(prior_stddvs[1:],  dim=0)
+        posterior_states = torch.stack(posterior_states[1:],  dim=0)
+        posterior_means = torch.stack(posterior_means[1:],  dim=0)
+        posterior_stddvs = torch.stack(posterior_stddvs[1:],  dim=0)
+        rewards = torch.stack(rewards[1:], dim=0).squeeze()
 
         # we return an empty tensor for compatiability with the recurrent states space models which require this value.
-        return torch.empty(0), prior_states, prior_means, prior_stddvs, posterior_states, posterior_means, posterior_stddvs, rewards
+        return torch.empty(0).to(self._device), prior_states, prior_means, prior_stddvs, posterior_states, posterior_means, posterior_stddvs, rewards
 
 
     def decode(self, latent: torch.Tensor, belief: torch.empty) -> torch.Tensor:

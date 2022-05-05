@@ -21,15 +21,16 @@ def images_to_observation(images, bit_depth):
     """
 
     # reshape the images to be of size [64, 64, 3]. Use linear interpolation for downsampling.
-    images = cv2.resize(images, (64, 64), interpolation==cv2.INTER_LINEAR).transpose(2, 0, 1)
+    images = cv2.resize(images, (64, 64), interpolation=cv2.INTER_LINEAR).transpose(2, 0, 1)
 
     # reshape the images and cast to float Tensor
-    images = torch.Torch(images, dtype=torch.float32)
+    images = torch.tensor(images, dtype=torch.float32)
 
     # reduce bit rate and return 
-    return preprocess_observtation_(images, bit_depth).unsqueeze(0)
+    preprocess_observation(images, bit_depth)
+    return images.unsqueeze(0)
 
-def preprocess_observation_(observation, bit_depth):
+def preprocess_observation(observation, bit_depth):
     """
         Preprocesses an observation inplace (from float32 Tensor [0, 255] to [-0.5, 0.5])
         As mentioned in the paper Glow: Generative Flow with Invertible 1×1 Convolutions
@@ -38,8 +39,7 @@ def preprocess_observation_(observation, bit_depth):
     """
 
     # Quantise to given bit depth and centre
-    observation.div_(2 ** (8 - bit_depth)).floor_().div_(2 **
-                                                        bit_depth).sub_(0.5)
+    observation.div_(2 ** (8 - bit_depth)).floor_().div_(2 ** bit_depth).sub_(0.5)
     # Dequantise (to approx. match likelihood of PDF of continuous images vs. PMF of discrete images)
     observation.add_(torch.rand_like(observation).div_(2 ** bit_depth))
 
@@ -47,10 +47,12 @@ def preprocess_observation_(observation, bit_depth):
 def postprocess_observation(observation, bit_depth):
     """
         Postprocess an observation for storage (from float32 numpy array [-0.5, 0.5] to uint8 numpy array [0, 255])
-        
         We need to undo the preprocessing step if we want to cisuallize the resulting sequence from our models.
     """
-    return np.clip(np.floor((observation + 0.5) * 2 ** bit_depth) * 2 ** (8 - bit_depth), 0, 2 ** 8 - 1).astype(np.uint8)
+    # map from the range [-0.5, 0.5] to the rande [0, 255] 
+    observation = np.floor((observation + 0.5) * 2 ** bit_depth) * 2 ** (8 - bit_depth)
+    # clip the values to enforce the range, and cast as int
+    return np.clip(observation, 0, 2 ** 8 - 1).astype(np.uint8)
 
 
 class ExperienceReplay():
@@ -76,12 +78,17 @@ class ExperienceReplay():
         self.rewards = np.empty((size, ), dtype=np.float32)
         self.nonterminals = np.empty((size, 1), dtype=np.float32)
         self.idx = 0
-        self.full = False  # Tracks if memory has been filled/all slots are valid
+
+        # Tracks if memory has been filled/all slots are valid
         # Tracks how much experience has been used in total
+        self.full = False  
         self.steps, self.episodes = 0, 0
         self.bit_depth = bit_depth
 
     def append(self, observation, action, reward, done):
+        # convert from torch tensor to numpy array
+        observation = observation.numpy()
+
         if self.symbolic_env:
           self.observations[self.idx] = observation
         else:
@@ -121,7 +128,7 @@ class ExperienceReplay():
 
         if not self.symbolic_env:
             # Undo discretisation for visual observations
-            preprocess_observation_(observations, self.bit_depth)
+            preprocess_observation(observations, self.bit_depth)
 
         return observations.reshape(L, n, *observations.shape[1:]), self.actions[vec_idxs].reshape(L, n, -1), self.rewards[vec_idxs].reshape(L, n), self.nonterminals[vec_idxs].reshape(L, n, 1)
 

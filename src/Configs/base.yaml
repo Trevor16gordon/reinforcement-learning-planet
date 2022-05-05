@@ -50,14 +50,15 @@ env:
 train:
   grad_clip_norm: 1_000
   learning_rate: 0.001
-  learning_rate_schedule: 0
+  lr_schedule: 0
   adam_epsilon: 0.0001
   batch_size: 64
   train_iters: 10
+  seq_length: 50
 
   # weight parameters for KL-divergence and latent overshooting loss terms 
   kl_clip: 3.0
-  global_kl_beta: 0
+  global_kl_beta: 0.5
   overshooting_kl_beta: 0
   overshooting_distance: 50
 
@@ -69,15 +70,23 @@ mpc:
   candidates: 1_000
   top_candidates: 100
 
-
    
 # Miscellanious parameters for data collection
 # experiment tracking, and experiment set-up
+
+# how frequently to test the model, the number of 
+# trajectories to test with, and how often to checkpoint 
+# our progress.
 test_interval: 50
 test_episodes: 10
 checkpoint_interval: 50
 
+# total number of trajectories to collect.
+# and the initial number of trajectories to 
+# add to the replay buffer (memory)
 episodes: 1000
 seed_episodes: 5
 
+# magnitude of the random noise added to out
+# actions while collecting data.
 action_noise: 0.3

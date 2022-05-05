@@ -1,2 +1,3 @@
 # Ignore all .pyc files to avoid cluttering the repo.
 *.pyc
+*.swp
