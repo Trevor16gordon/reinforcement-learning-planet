@@ -201,3 +201,18 @@ if __name__ == "__main__":
         loss.backward()
         nn.utils.clip_grad_norm_(transition_model.parameters(), train_config["grad_clip_norm"], norm_type=2)
         optimiser.step()
+
+
+        model_save_info = {
+            "state_dict" : transition_model.state_dict(),
+            "env_name": args.env,
+            "model_config": model_config,
+            "model": args.model,
+            "env_config": config["env"],
+            "seed": args.seed,
+            }
+        torch.save(model_save_info, f"transition_model2_{iter}.pkl")
+
+        pdb.set_trace()
+
+
