@@ -10,7 +10,7 @@ This model will
 
 from env import GymEnv
 from data import ExperienceReplay
-from Models import SSM
+from Models import SSM, MODEL_DICT
 from utils import gather_data, compute_loss
 
 import torch
@@ -30,9 +30,6 @@ import cv2
 import gym
 
 
-MODEL_DICT = {
-    "ssm": SSM,
-}
 GYM_ENVS = ["InvertedPendulum-v2", "Pendulum-v1", "MountainCar-v0", "CartPole-v1"]
 CONTROL_SUITE_ENVS = ["ant-v2"]
 
@@ -76,8 +73,7 @@ if __name__ == "__main__":
         # create comparable wrapper for control suite tasks
         raise NotImplementedError("No Control Suite Wrapper written yet.")
     """
-    env = GymEnv
-    env = env(
+    env = GymEnv(
         args.env,
         args.seed,
         **config["env"],
