@@ -211,6 +211,9 @@ if __name__ == "__main__":
 
         print(losses)
 
+        # Data Collection
+        gather_data(env, memory, 1, config["max_episode_len"]/config["env"]["action_repeat"])
+
         if ((iter + 1) % config["checkpoint_interval"]) == 0:
             model_save_info = {
                 "state_dict" : transition_model.state_dict(),
@@ -260,6 +263,9 @@ if __name__ == "__main__":
                 action = best_actions[0, :]
                 print(f"stepping action as {action}")
                 next_state, reward, done, info  = env.step(action)
+
+                # Adding MPC test data to memory buffer as well
+                memory.append(next_state, action, reward, done)
 
                 # Update for transition model keeping track of chosen states
                 action_torch = torch.ones(1, 1, env.action_size)
