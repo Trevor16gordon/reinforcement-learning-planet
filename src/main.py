@@ -229,10 +229,11 @@ if __name__ == "__main__":
         if ((iter + 1) % config["test_interval"]) == 0:
             # Test performance using MPC
             transition_model_mpc = copy.deepcopy(transition_model)
+            transition_model_mpc.eval()
             dyn = LearnedDynamics(args.env, transition_model_mpc, env.action_size, env.observation_size)
             mpc = ModelPredictiveControl(dyn)
             mpc.control_horizon_simulate = config["mpc"]["planning_horizon"]
-            max_nframes = 30
+            max_nframes = 50
             state = env.reset()
             state = state.squeeze()
 
