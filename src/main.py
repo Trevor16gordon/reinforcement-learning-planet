@@ -12,6 +12,7 @@ from env import GymEnv
 from data import ExperienceReplay
 from Models import SSM, MODEL_DICT
 from utils import gather_data, compute_loss
+from dynamics import ModelPredictiveControl, LearnedDynamics
 
 import torch
 from torch import optim, nn
@@ -28,6 +29,9 @@ import glob
 import time
 import cv2
 import gym
+import pdb
+import copy
+
 
 
 GYM_ENVS = ["InvertedPendulum-v2", "Pendulum-v1", "MountainCar-v0", "CartPole-v1"]
@@ -143,7 +147,7 @@ if __name__ == "__main__":
         'test_rewards': []
     }
 
-    for _ in range(train_config["train_iters"]):
+    for iter in range(train_config["train_iters"]):
         loss = 0
 
         # Sample batch_size sequences of length at random from the replay buffer.
@@ -175,6 +179,7 @@ if __name__ == "__main__":
             nonterminals[:-1]
         )
 
+
         # The loss function is the sum of the reconstruction loss, the reward prediction loss, and the KL-divergence loss.
         kl_loss = transition_model.kl_loss(prior_means, prior_stddvs, posterior_means, posterior_stddvs, kl_clip)
         obs_loss = transition_model.observation_loss(posterior_states, beliefs, observations[1:])
@@ -202,17 +207,49 @@ if __name__ == "__main__":
         nn.utils.clip_grad_norm_(transition_model.parameters(), train_config["grad_clip_norm"], norm_type=2)
         optimiser.step()
 
+        print(losses)
 
-        model_save_info = {
-            "state_dict" : transition_model.state_dict(),
-            "env_name": args.env,
-            "model_config": model_config,
-            "model": args.model,
-            "env_config": config["env"],
-            "seed": args.seed,
-            }
-        torch.save(model_save_info, f"transition_model2_{iter}.pkl")
+        if ((iter + 1) % config["checkpoint_interval"]) == 0:
+            model_save_info = {
+                "state_dict" : transition_model.state_dict(),
+                "env_name": args.env,
+                "model_config": model_config,
+                "model": args.model,
+                "env_config": config["env"],
+                "seed": args.seed,
+                }
+            torch.save(model_save_info, f"transition_model2_{iter}.pkl")
 
-        pdb.set_trace()
+
+        if ((iter + 1) % config["test_interval"]) == 0:
+            # Test performance using MPC
+            transition_model_tst = copy.deepcopy(transition_model)
+            dyn = LearnedDynamics(args.env, transition_model_tst)
+            mpc = ModelPredictiveControl(dyn)
+            mpc.control_horizon_simulate = config["mpc"]["planning_horizon"]
+            max_nframes = 30
+            state = env.reset()
+            state = state.squeeze()
+
+            avg_reward_per_episode = 0
+            for i in range(max_nframes):
+                best_actions = mpc.compute_action_cross_entropy_method(
+                    state, 
+                    None, # No goal as using sum of rewards to select best action sequence
+                    num_iterations=config["mpc"]["optimization_iters"],
+                    j=config["mpc"]["candidates"], 
+                    k=config["mpc"]["top_candidates"])
+
+                action = best_actions[0, :]
+                print(f"stepping action as {action}")
+                next_state, reward, done, info  = env.step(action)
+
+                avg_reward_per_episode += reward
+                
+                state = next_state.squeeze()
+
+                if done:
+                    print(f"Test episode completed. Survived {i} episodes. Total reward is {avg_reward_per_episode}")
+                    break
 
 

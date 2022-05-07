@@ -42,7 +42,7 @@ memory:
 env:
   symbolic_env: False
   max_episode_length: 1000
-  action_repeat: 2 
+  action_repeat: 1 
   bit_depth: 5
  
 
@@ -53,8 +53,8 @@ train:
   lr_schedule: 0
   adam_epsilon: 0.0001
   batch_size: 64
-  train_iters: 10
-  seq_length: 50
+  train_iters: 100
+  seq_length: 10
 
   # weight parameters for KL-divergence and latent overshooting loss terms 
   kl_clip: 3.0
@@ -65,10 +65,10 @@ train:
 
 # Model Predictive Control Hyperparameters
 mpc:
-  planning_horizon: 12
-  optimization_iters: 10
-  candidates: 1_000
-  top_candidates: 100
+  planning_horizon: 3
+  optimization_iters: 3
+  candidates: 50
+  top_candidates: 5
 
    
 # Miscellanious parameters for data collection
