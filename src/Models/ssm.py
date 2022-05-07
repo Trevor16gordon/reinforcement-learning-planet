@@ -250,12 +250,13 @@ class SSM(TransitionModel, nn.Module):
             # Starting with actions, init_belief, init_state as zero
             # Actions will be used in the next call
             seq_length, batch_size, action_size = batched_actions.shape
-            init_belief = torch.zeros(1, 0)
-            init_state = torch.zeros(1, self._state_size)
-            init_action = torch.zeros(1, 1, self._act_size)
+            init_belief = torch.zeros(batch_size, 0)
+            init_state = torch.zeros(batch_size, self._state_size)
+            init_action = torch.zeros(1, batch_size, self._act_size)
             encoded_observation_0 = self.encode(obs_0)
             if not len(encoded_observation_0.shape) >= 3:
                 encoded_observation_0 = encoded_observation_0.unsqueeze(0)
+            
             (
                 t0_beliefs,
                 t0_prior_states,
@@ -271,8 +272,10 @@ class SSM(TransitionModel, nn.Module):
                 init_belief,
                 encoded_observation_0
             )
+            # t0 state will be torch.Size([1, batch, self._state_size])
             # t0 state is repeated along batch dimension so all actions have the same starting t0
-            t0_prev_state = torch.concat([t0_prev_state[0]]*batch_size, dim=0)
+            # t0_prev_state = torch.concat([t0_prev_state[0]]*batch_size, dim=0)
+            t0_prev_state = t0_prev_state[0, :, :]
         else:
             t0_prev_state = prev_state
 

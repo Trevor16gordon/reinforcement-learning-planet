@@ -5,9 +5,9 @@ Classes relating to the dynamics
 import gym
 import numpy as np
 import pdb
+import torch
 from env import GymEnv
 from stable_baselines3.common.vec_env import DummyVecEnv, SubprocVecEnv
-from utils import forward_generate
 
 class DynamicsBase():
     """Base class for environment dynamics stepping
@@ -31,9 +31,9 @@ class TrueDynamics():
     def __init__(self, env_name):
         super(TrueDynamics, self).__init__()
         self.env_name = env_name
-        dummy_env = gym.make(env_name)
-        self.env_action_dim = dummy_env.action_space.shape[0]
-        self.env_state_dim = dummy_env.observation_space.shape[0]
+        dummy_env = GymEnv(env_name,  0, False, 30, 1, 8)
+        self.env_action_dim = dummy_env.action_size
+        self.env_state_dim = dummy_env.observation_size
 
     def advance(self, state, actions):
         """Advance a step in the dynamics
@@ -61,6 +61,7 @@ class TrueDynamics():
             dones (np.array): Shape is (num_timesteps, self.num_env, 1)
         """
 
+        # TODO: Need to make this work for variable unflattened observation dimension
         num_timesteps, num_envs, env_action_dim_in = actions_multiple_timesteps.shape
         num_env_state0, env_state_dim = state_0.shape
         assert num_envs == num_env_state0
@@ -95,6 +96,9 @@ class LearnedDynamics():
         self.transition_model = transition_model
         self.model_belief = None
         self.model_state = None
+        dummy_env = GymEnv(env_name,  0, False, 30, 1, 8)
+        self.env_action_dim = dummy_env.action_size
+        self.env_state_dim = dummy_env.observation_size
 
     def advance_multiple_timesteps(self, state_0, actions_multiple_timesteps):
         """Advance multiple steps in the dynamics
@@ -109,7 +113,9 @@ class LearnedDynamics():
             rewards (np.array): Shape is (num_timesteps, self.num_env, 1)
             dones (np.array): Shape is (num_timesteps, self.num_env, 1)
         """
-    
+
+        state_0 = torch.from_numpy(state_0).float()
+        actions_multiple_timesteps = torch.from_numpy(actions_multiple_timesteps).float()
         if (self.model_state is None) and (self.model_belief is None):
             resulting_rewards, resulting_next_states = self.transition_model.forward_generate(actions_multiple_timesteps, obs_0=state_0)
         else:
@@ -129,7 +135,12 @@ class ModelPredictiveControl():
             cost_func (func): Should take in states rewards, dones and determine a scoring for the resulting action
             dynamics (DynamicsBase): Used for rolling out action sequences. Dynamics should return flattened states
         """
-        self.cost_func = cost_func if cost_func is not None else self.cost_func_avg_closest_goal
+        if cost_func == None:
+            self.cost_func = cost_func if cost_func is not None else self.cost_func_default
+        elif cost_func == "cost_func_closest_goal":
+            self.cost_func = self.cost_func_closest_goal
+        elif cost_func == "cost_func_avg_closest_goal":
+            self.cost_func = self.cost_func_avg_closest_goal
         self.dynamics = dynamics
         self.control_horizon = 10
         self.control_horizon_simulate = 14
@@ -144,7 +155,9 @@ class ModelPredictiveControl():
         num_timesteps = self.control_horizon_simulate
         # Create J candidate sequences
 
-        state0_duplicates = np.repeat(state.reshape((1,  -1)), j, axis=0)
+        # Ok I shouldn't do this reshaping here
+        # Need to deal with flatenned state dimension as well as unflattened like images (3, 64, 64)
+        state0_duplicates = np.repeat(np.expand_dims(state, 0), j, axis=0)
 
         means = np.zeros((1, self.control_horizon_simulate))
         stds = 1*np.ones((1, self.control_horizon_simulate))
@@ -221,7 +234,9 @@ class ModelPredictiveControl():
 
 if __name__ == "__main__":
 
-    dyn = TrueDynamics("InvertedPendulum-v2")
+    # dyn = TrueDynamics("InvertedPendulum-v2")
+    
+    
 
     mpc = ModelPredictiveControl(dyn)
     mpc.control_horizon_simulate = 3
