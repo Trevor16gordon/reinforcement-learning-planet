@@ -65,10 +65,10 @@ train:
 
 # Model Predictive Control Hyperparameters
 mpc:
-  planning_horizon: 3
-  optimization_iters: 3
-  candidates: 50
-  top_candidates: 5
+  planning_horizon: 12
+  optimization_iters: 5
+  candidates: 300
+  top_candidates: 30
 
    
 # Miscellanious parameters for data collection
@@ -77,7 +77,7 @@ mpc:
 # how frequently to test the model, the number of 
 # trajectories to test with, and how often to checkpoint 
 # our progress.
-test_interval: 50
+test_interval: 5
 test_episodes: 10
 checkpoint_interval: 50
 

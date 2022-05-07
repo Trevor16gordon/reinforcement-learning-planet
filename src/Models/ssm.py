@@ -295,9 +295,9 @@ class SSM(TransitionModel, nn.Module):
             #prev_beliefs is None for SSM
         )
 
-        reconstructed_obs = self._decoder(generated_prior_states, generated_beliefs)
-        reconstructed_images = reconstructed_obs.permute(0, 2, 3, 1).detach().numpy()
+        #reconstructed_obs = self._decoder(generated_prior_states, generated_beliefs)
+        #reconstructed_images = reconstructed_obs.permute(0, 2, 3, 1).detach().numpy()
         generated_rewards = generated_reward_preds.detach().numpy()
-        return generated_rewards, reconstructed_images
+        return generated_rewards, None#reconstructed_images
 
         
