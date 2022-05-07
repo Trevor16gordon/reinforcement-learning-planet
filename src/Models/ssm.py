@@ -218,3 +218,70 @@ class SSM(TransitionModel, nn.Module):
         if reshape:
             observations = observations.view(size[0], size[1], *self._obs_dim)
         return observations
+
+    def forward_generate(self, batched_actions, obs_0):
+        """Helper function to generate rewards / states
+
+        TODO: Currently this function only accepts one observation for t0
+        - It should be able to support different t0 states for the different actions
+        - It should be able to support variable length t0_actions, t0_observations
+
+        Args:
+            batched_actions (torch.Tensor[seq_length, batch_size, action_size]): Actions to pass forward through the model
+            obs_0 (torch.Tensor[1, *self._state_size]): Observation for the t0 state
+        """
+
+        if not len(obs_0.shape) > 3:
+            obs_0 = obs_0.unsqueeze(0)
+        assert obs_0.shape[1:] == self._obs_dim
+
+        # Call forward once with observations to get posterior_state
+        # Starting with actions, init_belief, init_state as zero
+        # Actions will be used in the next call
+        seq_length, batch_size, action_size = batched_actions.shape
+        init_belief = torch.zeros(1, 0)
+        init_state = torch.zeros(1, self._state_size)
+        init_action = torch.zeros(1, 1, self._act_size)
+        encoded_observation_0 = self.encode(obs_0)
+        if not len(encoded_observation_0.shape) >= 3:
+            encoded_observation_0 = encoded_observation_0.unsqueeze(0)
+        (
+            t0_beliefs,
+            t0_prior_states,
+            t0_prior_means,
+            t0_prior_stddvs,
+            t0_posterior_states,
+            t0_posterior_means,
+            t0_posterior_stddvs,
+            t0_reward_preds,
+        ) = self.forward(
+            init_state,
+            init_action,
+            init_belief,
+            encoded_observation_0
+        )
+
+        # t0 state is repeated along batch dimension so all actions have the same starting t0
+        t0_posterior_states = torch.concat([t0_posterior_states[0]]*batch_size, dim=0)
+
+        # Call forward again with no observations but prev_state
+        (
+            generated_beliefs,
+            generated_prior_states,
+            generated_prior_means,
+            generated_prior_stddvs,
+            generated_posterior_states,
+            generated_posterior_means,
+            generated_posterior_stddvs,
+            generated_reward_preds,
+        ) = self.forward(
+            t0_posterior_states,
+            batched_actions
+        )
+
+        reconstructed_obs = self._decoder(generated_prior_states, generated_beliefs)
+        reconstructed_images = reconstructed_obs.permute(0, 2, 3, 1).detach().numpy()
+        generated_rewards = generated_reward_preds.detach().numpy()
+        return generated_rewards, reconstructed_images
+
+        
