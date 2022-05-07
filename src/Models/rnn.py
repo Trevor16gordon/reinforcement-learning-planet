@@ -1,6 +1,6 @@
 """
 
-Implimentation of the Gaussian Stochastic State Space Model (SSM)
+Implimentation of the Deterministic State Space Model (RNN)
 
 """
 
@@ -10,22 +10,22 @@ from torch import nn
 import torch
 import numpy as np
 
-class SSM(TransitionModel, nn.Module):
+class RNN(TransitionModel, nn.Module):
     """
-        Impliments the Gaussian Stochastic State Space Model as Defined in the paper:
+        Impliments the Deterministic State Space Model as Defined in the paper:
             Learning Latent Dynamics for Planning from Pixels, Hafner et. al. (2019)
             https://arxiv.org/pdf/1811.04551.pdf
          
         Model Outline:
             Transition Model: 
-                Feed Forward Network which takes in prior latent state, s_t, and the last action, a_t, 
-                and predicts the distribution, s_{t+1} ~ p(s_{s+t} | s_t, a_t). 
+                Recurent Neural Network which takes in prior RNN state, h_{t}, and the last action, a_t, 
+                and predicts the distribution, h_{t+1} ~ p(h_{s+t} | h_t, a_t). 
                 This distribution is modeled as a Gaussian distribution with diagonal covariance.
             
             Posterior Model:
                 Given the current observation (pixel level image, or the latent vector from an encoder network),
-                the prior latent state, s_{t-1}, from the SSM model, and the prior action, a_{t-1}, we can construct
-                the posterior distribution for the current latent state, s_{t} ~ p(s_{t} | o_{t}, s_{t-1}, a_{t-1}). 
+                the prior state of the RNN, h_{t-1}, from the RNN model, and the prior action, a_{t-1}, we can construct
+                the posterior distribution for the current RNN hidden state, h_{t} ~ p(h_{t} | o_{t}, h_{t-1}, a_{t-1}). 
                 This is used as the learning target for the Transition Model output. 
 
         Loss:
@@ -68,27 +68,23 @@ class SSM(TransitionModel, nn.Module):
 
         # Call super from the base class to instantiate all model hyper parameters. Then call nn.Module to set up internal models
         nn.Module.__init__(self)
-        super(SSM, self).__init__(  
+        super(RNN, self).__init__(  
             obs_dim, act_size, device, state_size, embed_size, belief_size, hidden_dim, activation, min_stddev
         )
         
         # Define the Transition model
-        self._transition = nn.Sequential(
-            nn.Linear(self._state_size + self._act_size, self._hidden_dim),
-            self._activation(),
-            nn.Linear(self._hidden_dim, 2 * self._state_size)
-        )
+        self._transition = nn.GRUCell(self._act_size, self._belief_size)
 
         # Define the Posterior model
         self._posterior = nn.Sequential(
-            nn.Linear(self._state_size + self._act_size + self._embed_size, self._hidden_dim),
+            nn.Linear(self._belief_size + self._act_size + self._embed_size, self._hidden_dim),
             self._activation(),
-            nn.Linear(self._hidden_dim, 2 * self._state_size)
+            nn.Linear(self._hidden_dim, self._belief_size)
         )
 
         # Define the Reward model
         self._reward = nn.Sequential(
-            nn.Linear(self._state_size, self._hidden_dim),
+            nn.Linear(self._belief_size, self._hidden_dim),
             self._activation(),
             nn.Linear(self._hidden_dim, self._hidden_dim),
             self._activation(),
@@ -99,7 +95,7 @@ class SSM(TransitionModel, nn.Module):
         self, 
         prev_state: torch.Tensor,
         actions: torch.Tensor,
-        prev_beliefs: Optional[torch.Tensor] = None, 
+        prev_beliefs: torch.Tensor, 
         observations: Optional[torch.Tensor] = None,
         non_terminals: Optional[torch.Tensor] = None
     ) -> List[torch.Tensor]:
@@ -116,22 +112,22 @@ class SSM(TransitionModel, nn.Module):
                 This is training mode, so we perform both generative modeling with the transition model,
                 and inference using the posterior model.
 
-            prev_state:     torch.Tensor[seq_length, batch_size, state_size] 
+            prev_state:     torch.empty()
             actions:        torch.Tensor[seq_length, batch_size, act_size] 
-            prev_beliefs:   torch.empty() - beliefs not used in the SSM model.
+            prev_beliefs:   torch.Tensor[batch_size, belief_size] 
             observations:   torch.Tensor[seq_length, batch_size, embed_size] 
             non_terminals:  torch.Tensor[seq_length, batch_size, 1] 
 
             In generative mode, the batch dimension will be ommited.
 
             Returns:
-                beliefs:            torch.empty(0) - the SSM does not use an RNN/beliefs
-                prior_states:       torch.Tensor[seq_length, batch_size, state_size] 
-                prior_means:        torch.Tensor[seq_length, batch_size, state_size] 
-                prior_stds:         torch.Tensor[seq_length, batch_size, state_size] 
-                posterior_states:   torch.Tensor[seq_length, batch_size, state_size] 
-                posterior_means:    torch.Tensor[seq_length, batch_size, state_size] 
-                posterior_stds:     torch.Tensor[seq_length, batch_size, state_size] 
+                beliefs:            torch.Tensor[seq_length, batch_size, belief_size]
+                prior_states:       torch.empty()       
+                prior_means:        torch.Tensor[seq_length, batch_size, belief_size]
+                prior_stds:         torch.empty()
+                posterior_states:   torch.empty()
+                posterior_means:    torch.Tensor[seq_length, batch_size, belief_size]
+                posterior_stds:     torch.empty()
                 rewards:            torch.Tensor[seq_length, batch_size]
 
         """
@@ -140,76 +136,66 @@ class SSM(TransitionModel, nn.Module):
 
         # create empty lists to store the model predictions. Note that we cannot use
         # a single tensor of length horizon, as autograd does not back prop through inplace writes.
-        prior_states = [torch.empty(0)] * horizon
-        prior_means = [torch.empty(0)] * horizon
-        prior_stddvs = [torch.empty(0)] * horizon
-
-        posterior_states = [torch.empty(0)] * horizon
-        posterior_means = [torch.empty(0)] * horizon
-        posterior_stddvs = [torch.empty(0)] * horizon
-
+        prior_beliefs = [torch.empty(0)] * horizon
+        posterior_beliefs = [torch.empty(0)] * horizon
         rewards = [torch.empty(0)] * horizon
 
-        # the first prior and posterior state will be the previous observations
-        prior_states[0] = prev_state
-        posterior_states[0] = prev_state
+        # the initial input to the model
+        prior_beliefs[0] = prev_beliefs 
+        posterior_beliefs[0] = prev_beliefs
 
         non_terminal = non_terminals if non_terminals is not None else torch.ones(horizon) 
 
         # predict a sequence off length action.size()
         for t in range(horizon-1):
-            # If we have the observations, use the posterior state as the input to the transition model. (the inferred state from prior observation)
-            # otherwise, use the prior state (this occurs when the model is performing generative modeling)
-            current_state = prior_states[t] if observations is None else posterior_states[t]
-            current_state = current_state * non_terminal[t]
+            # If we have the observations, use the posterior belief as the model input . (the inferred RNN hidden state given the observation)
+            # otherwise, use the belied state (this occurs when the model is performing generative modeling)
+            current_belief = prior_beliefs[t] if observations is None else posterior_beliefs[t]
+            current_belief = current_belief * non_terminal[t]
 
-            # compute prior distribution of next state
-            prior_input = torch.cat([current_state, actions[t]], dim=1)
-            prior_means[t + 1], prior_log_stddvs = torch.chunk(self._transition(prior_input), 2, dim = 1)
-            prior_stddvs[t + 1] = self.softplus(prior_log_stddvs) + self._min_stddev
-            prior_states[t + 1] = prior_means[t+1] + torch.randn_like(prior_means[t+1]) * prior_stddvs[t + 1] 
+            # Forward pass through the RNN to get subsequent RNN state (belief state)
+            prior_beliefs[t + 1] = self._transition(actions[t], current_belief)
 
             # if we have access to the observations, then we are in training mode, and we need to compute the posterior states.
             if observations is not None:
-                # the posterior model takes the prior state and action, as well as the current observation.
-                posterior_input = torch.cat([observations[t], current_state, actions[t]], dim=1)
-                posterior_means[t + 1], posterior_log_stddvs = torch.chunk(self._posterior(posterior_input), 2, dim = 1)
-                posterior_stddvs[t + 1] = self.softplus(posterior_log_stddvs) + self._min_stddev
-                posterior_states[t + 1] = posterior_means[t+1] + torch.randn_like(posterior_means[t+1]) * posterior_stddvs[t + 1] 
+                # the posterior model takes the prior belief and action, as well as the current observation.
+                posterior_input = torch.cat([observations[t], current_belief, actions[t]], dim=1)
+                posterior_beliefs[t + 1] = self._posterior(posterior_input)
 
-            rewards[t + 1] = self._reward(prior_states[t+1] if observations is None else posterior_states[t+1])
+            rewards[t + 1] = self._reward(prior_beliefs[t+1] if observations is None else posterior_beliefs[t+1])
         
         # stack the list to convert to vextor, and remove redunct indices. Note thate the first element of the list is never update.
-        prior_states = torch.stack(prior_states[1:], dim=0)
-        prior_means = torch.stack(prior_means[1:], dim=0)
-        prior_stddvs = torch.stack(prior_stddvs[1:],  dim=0)
-        posterior_states = torch.stack(posterior_states[1:],  dim=0)
-        posterior_means = torch.stack(posterior_means[1:],  dim=0)
-        posterior_stddvs = torch.stack(posterior_stddvs[1:],  dim=0)
+        prior_beliefs = torch.stack(prior_beliefs[1:], dim=0)
+        posterior_beliefs = torch.stack(posterior_beliefs[1:],  dim=0)
         rewards = torch.stack(rewards[1:], dim=0).squeeze()
 
         # we return an empty tensor for compatiability with the recurrent states space models which require this value.
-        return torch.empty(0).to(self._device), prior_states, prior_means, prior_stddvs, posterior_states, posterior_means, posterior_stddvs, rewards
+        return (
+            prior_beliefs, 
+            torch.empty(0).to(self._device), 
+            prior_beliefs, 
+            torch.empty(0).to(self._device), 
+            torch.empty(0).to(self._device), 
+            posterior_beliefs, 
+            torch.empty(0).to(self._device), 
+            rewards
+        )
 
 
-    def decode(self, latent: torch.Tensor, belief: torch.empty) -> torch.Tensor:
+    def decode(self, latent: torch.empty, belief: torch.Tensor) -> torch.Tensor:
         """
-            pass the latent state through the decoder. Ignore the belief vector, as this is only included for 
+            pass the latent state through the decoder. Ignore the latent vector, as this is only included for 
             cross compatability with the other Transition models.
 
-            For SSM:
-                latent: torch.Tensor with dimensions [horizon, batch_size, state_size]
-                belief: when using the SSM, there is no belief state, so this should 
-                        always be torch.empty(0). This is because
-                            torch.cat([latent, belief], dim=1) 
-                        simply returns the latent vector, since concatentating the 
-                        empty tensor leaves the other tensor unchanged.
+            For RNN:
+                latent: torch.empty (when using the RNN, there is no seperate latent state,)
+                belief: torch.Tensor (Expected shape [horizon, batch_size, belief_size])
         """
         # check to see if we need to reshape the input.
-        size = latent.size()
+        size = belief.size()
         reshape = False
         if 2 < len(size):
-            latent = latent.view(size[0]*size[1], size[3])
+            belief = belief.view(size[0]*size[1], size[3])
             reshape = True
 
         observations = self._decoder(latent, belief)
@@ -218,3 +204,29 @@ class SSM(TransitionModel, nn.Module):
         if reshape:
             observations = observations.view(size[0], size[1], *self._obs_dim)
         return observations
+
+    def kl_loss(
+        self,
+        prior_beliefs: torch.Tensor,
+        place_holder1: torch.empty,
+        posterior_beliefs: torch.Tensor,
+        place_holder2: torch.empty,
+        place_holder3: torch.Tensor,
+    ) -> torch.Tensor:
+        """
+        For the RNN based model we do not have a stochastic component, and there is 
+        therefore no distribution to learn. Instead, this is reduced to simply a MSE
+        loss term between the prior_means and the posterior_means.
+
+        prior_beliefs and posterior_beliefs should of the same dimension:
+            [horizon, batch_size, belief_size]
+
+        max_divergence is ignored in the computation of this loss term
+        """
+        
+        # take the sum over the belief dimensiont
+        mse_loss = self.mse(prior_beliefs, posterior_beliefs).sum(2)
+
+        # return the mean loss accross the time and batch dimensions.
+        return mse_loss.mean(dim=(0, 1))
+

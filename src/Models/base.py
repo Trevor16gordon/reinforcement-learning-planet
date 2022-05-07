@@ -67,7 +67,7 @@ class TransitionModel(ABC):
         max_divergence: torch.Tensor,
     ) -> torch.Tensor:
         """
-        Compute the full model Loss function.
+        Compute the KL-Divergence Term in the model loss function. 
 
         prior_means, prior_stddev, posterior_means, posterior_stddev should
         all be of the same dimension:
@@ -103,7 +103,7 @@ class TransitionModel(ABC):
             [horizon, batch_size, *obs_size]
         """
 
-        horizon, batch_size, _ = posterior.size()
+        horizon, batch_size = observations.size(0), observations.size(1)
 
         # check if the posterior is the empty vector (RNN state space model)
         if posterior.nelement() != 0:
@@ -111,10 +111,9 @@ class TransitionModel(ABC):
 
         # check if the belief is the empty vector (SSM state space model)
         if belief.nelement() != 0:
-            belief = belief.view(horizon * batch_size, self._belief_dim)
+            belief = belief.view(horizon * batch_size, self._belief_size)
 
-        # mse will be of dimension:
-        #   [horizon, batch_size, *self._obs_dim] 
+        # mse will be of dimension: [horizon, batch_size, *self._obs_dim] 
         #(i.e. [horizon, batch_size, 3, 64, 64] in the case of pixel images.
         observation_pred = self.decode(posterior, belief).view(
             horizon, batch_size, *self._obs_dim

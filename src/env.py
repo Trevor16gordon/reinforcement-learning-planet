@@ -12,6 +12,8 @@ import cv2
 
 from data import images_to_observation
 
+GYM_ENVS = ["InvertedPendulum-v2", "Pendulum-v1", "MountainCar-v0", "CartPole-v1"]
+CONTROL_SUITE_ENVS = ["ant-v2"]
 
 class BaseEnv(ABC):
     """

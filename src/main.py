@@ -8,9 +8,9 @@ This model will
 - Use the data loader to get data
 """
 
-from env import GymEnv
+from env import GymEnv, GYM_ENVS, CONTROL_SUITE_ENVS 
 from data import ExperienceReplay
-from Models import SSM
+from Models import MODEL_DICT
 from utils import gather_data, compute_loss
 
 import torch
@@ -19,7 +19,6 @@ from torch.distributions import Normal
 
 # from stable_baselines3.common.vec_env import DummyVecEnv
 from pathlib import Path
-from argparse import Namespace
 import numpy as np
 import argparse
 import yaml
@@ -30,20 +29,15 @@ import cv2
 import gym
 
 
-MODEL_DICT = {
-    "ssm": SSM,
-}
-GYM_ENVS = ["InvertedPendulum-v2", "Pendulum-v1", "MountainCar-v0", "CartPole-v1"]
-CONTROL_SUITE_ENVS = ["ant-v2"]
-
 
 if __name__ == "__main__":
 
     parser = argparse.ArgumentParser()
 
     parser.add_argument("--id", type=str, default="default", help="Experiment ID")
+    parser.add_argument("--save-path", type=str, default="", help="Path for saving model check points.")
     parser.add_argument("--seed", type=int, default=1, metavar="S", help="Random seed")
-    parser.add_argument( "--env", type=str, default="CartPole-v1", help="Gym/Control Suite environment")
+    parser.add_argument( "--env", type=str, default="MountainCar-v0", help="Gym/Control Suite environment")
     parser.add_argument( "--model", type=str, default="ssm", choices=["ssm", "rssm", "rnn"], help="Select the State Space Model to Train.",)
     parser.add_argument("--render", type=bool, default=False, help="Render environment")
     parser.add_argument( "--config", type=str, default="base", help="Specify the yaml file to use in setting up experiment.",)
@@ -147,7 +141,7 @@ if __name__ == "__main__":
         'test_rewards': []
     }
 
-    for _ in range(train_config["train_iters"]):
+    for itr in range(train_config["train_iters"]):
         loss = 0
 
         # Sample batch_size sequences of length at random from the replay buffer.
@@ -191,7 +185,8 @@ if __name__ == "__main__":
         losses["sum_loss"] = loss.item()
 
         print(loss.item())
-        if 0 < train_config["global_kl_beta"]:
+        # The Global KL divergence term is not applicable to the RNN based Transition model.
+        if 0 < train_config["global_kl_beta"] and args.model != 'rnn':
             loss += train_config["global_kl_beta"] * transition_model.kl_loss(
                 global_prior_means,
                 global_prior_stddvs,
@@ -203,5 +198,16 @@ if __name__ == "__main__":
         # standard back prop step. Includes gradient clipping to help with training the RNN.
         optimiser.zero_grad()
         loss.backward()
-        nn.utils.clip_grad_norm_(transition_model.parameters(), train_config["grad_clip_norm"], norm_type=2)
+        nn.utils.clip_grad_norm_(transition_model.parameters(), train_config["clip_grad_norm"], norm_type=2)
         optimiser.step()
+
+        if ((itr + 1) % config["checkpoint_interval"]) == 0:
+            model_save_info = {
+                "state_dict" : transition_model.state_dict(),
+                "env_name": args.env,
+                "model_config": model_config,
+                "model": args.model,
+                "env_config": config["env"],
+                "seed": args.seed,
+            }
+            torch.save(model_save_info, os.path.join(args.save_path, f"{args.model}_{itr}.pkl"))

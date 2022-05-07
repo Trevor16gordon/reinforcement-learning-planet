@@ -48,7 +48,7 @@ env:
 
 # Training hyperparameters
 train:
-  grad_clip_norm: 1_000
+  clip_grad_norm: 1_000
   learning_rate: 0.001
   lr_schedule: 0
   adam_epsilon: 0.0001
