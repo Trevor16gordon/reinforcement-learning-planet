@@ -219,8 +219,15 @@ class SSM(TransitionModel, nn.Module):
             observations = observations.view(size[0], size[1], *self._obs_dim)
         return observations
 
-    def forward_generate(self, batched_actions, obs_0):
+    def forward_generate(self, batched_actions,
+            obs_0: Optional[torch.Tensor] = None,
+            prev_state: Optional[torch.Tensor] = None,
+            prev_beliefs: Optional[torch.Tensor] = None):
         """Helper function to generate rewards / states
+
+
+        Need to either pass in obs_0 or prev_state
+        - If obs_0 is passed in, 
 
         TODO: Currently this function only accepts one observation for t0
         - It should be able to support different t0 states for the different actions
@@ -231,38 +238,43 @@ class SSM(TransitionModel, nn.Module):
             obs_0 (torch.Tensor[1, *self._state_size]): Observation for the t0 state
         """
 
+        if (obs_0 is None) and (prev_state is None):
+            raise ArgumentError("Need to pass in either t0 observation or prev_state")
+
         if not len(obs_0.shape) > 3:
             obs_0 = obs_0.unsqueeze(0)
         assert obs_0.shape[1:] == self._obs_dim
 
-        # Call forward once with observations to get posterior_state
-        # Starting with actions, init_belief, init_state as zero
-        # Actions will be used in the next call
-        seq_length, batch_size, action_size = batched_actions.shape
-        init_belief = torch.zeros(1, 0)
-        init_state = torch.zeros(1, self._state_size)
-        init_action = torch.zeros(1, 1, self._act_size)
-        encoded_observation_0 = self.encode(obs_0)
-        if not len(encoded_observation_0.shape) >= 3:
-            encoded_observation_0 = encoded_observation_0.unsqueeze(0)
-        (
-            t0_beliefs,
-            t0_prior_states,
-            t0_prior_means,
-            t0_prior_stddvs,
-            t0_posterior_states,
-            t0_posterior_means,
-            t0_posterior_stddvs,
-            t0_reward_preds,
-        ) = self.forward(
-            init_state,
-            init_action,
-            init_belief,
-            encoded_observation_0
-        )
-
-        # t0 state is repeated along batch dimension so all actions have the same starting t0
-        t0_posterior_states = torch.concat([t0_posterior_states[0]]*batch_size, dim=0)
+        if prev_state is None:
+            # Call forward once with observations to get posterior_state
+            # Starting with actions, init_belief, init_state as zero
+            # Actions will be used in the next call
+            seq_length, batch_size, action_size = batched_actions.shape
+            init_belief = torch.zeros(1, 0)
+            init_state = torch.zeros(1, self._state_size)
+            init_action = torch.zeros(1, 1, self._act_size)
+            encoded_observation_0 = self.encode(obs_0)
+            if not len(encoded_observation_0.shape) >= 3:
+                encoded_observation_0 = encoded_observation_0.unsqueeze(0)
+            (
+                t0_beliefs,
+                t0_prior_states,
+                t0_prior_means,
+                t0_prior_stddvs,
+                t0_prev_state,
+                t0_posterior_means,
+                t0_posterior_stddvs,
+                t0_reward_preds,
+            ) = self.forward(
+                init_state,
+                init_action,
+                init_belief,
+                encoded_observation_0
+            )
+            # t0 state is repeated along batch dimension so all actions have the same starting t0
+            t0_prev_state = torch.concat([t0_prev_state[0]]*batch_size, dim=0)
+        else:
+            t0_prev_state = prev_state
 
         # Call forward again with no observations but prev_state
         (
@@ -275,8 +287,9 @@ class SSM(TransitionModel, nn.Module):
             generated_posterior_stddvs,
             generated_reward_preds,
         ) = self.forward(
-            t0_posterior_states,
-            batched_actions
+            t0_prev_state,
+            batched_actions,
+            #prev_beliefs is None for SSM
         )
 
         reconstructed_obs = self._decoder(generated_prior_states, generated_beliefs)
