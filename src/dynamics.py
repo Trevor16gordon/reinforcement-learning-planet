@@ -90,15 +90,14 @@ class TrueDynamics():
 
 class LearnedDynamics():
 
-    def __init__(self, env_name, transition_model):
+    def __init__(self, env_name, transition_model, action_size, observation_size):
         super(LearnedDynamics, self).__init__()
         self.env_name = env_name
         self.transition_model = transition_model
         self.model_belief = None
         self.model_state = None
-        dummy_env = GymEnv(env_name,  0, False, 30, 1, 8)
-        self.env_action_dim = dummy_env.action_size
-        self.env_state_dim = dummy_env.observation_size
+        self.env_action_dim = action_size
+        self.env_state_dim = observation_size
 
     def advance_multiple_timesteps(self, state_0, actions_multiple_timesteps):
         """Advance multiple steps in the dynamics

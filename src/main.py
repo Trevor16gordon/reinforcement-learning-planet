@@ -8,7 +8,7 @@ This model will
 - Use the data loader to get data
 """
 
-from env import GymEnv
+from env import GymEnv, ControlSuiteEnv
 from data import ExperienceReplay
 from Models import SSM, MODEL_DICT
 from utils import gather_data, compute_loss
@@ -35,7 +35,7 @@ import copy
 
 
 GYM_ENVS = ["InvertedPendulum-v2", "Pendulum-v1", "MountainCar-v0", "CartPole-v1"]
-CONTROL_SUITE_ENVS = ["ant-v2"]
+CONTROL_SUITE_ENVS = ["ant-v2", "cartpole-swingup"]
 
 
 if __name__ == "__main__":
@@ -70,14 +70,16 @@ if __name__ == "__main__":
     torch.cuda.manual_seed(args.seed)
 
     # instantiate the environment and the Experience replay buffer to collect trajectories.
-    """
+    
     if args.env in GYM_ENVS:
-        env = GymEnv 
+        envClass = GymEnv
+    elif args.env in CONTROL_SUITE_ENVS:
+        envClass = ControlSuiteEnv
     else:
         # create comparable wrapper for control suite tasks
         raise NotImplementedError("No Control Suite Wrapper written yet.")
-    """
-    env = GymEnv(
+    
+    env = envClass(
         args.env,
         args.seed,
         **config["env"],
@@ -97,7 +99,7 @@ if __name__ == "__main__":
         env.observation_size, env.action_size, device, **model_config
     ).to(device)
 
-    gather_data(env, memory, config["seed_episodes"])
+    gather_data(env, memory, config["seed_episodes"], config["max_episode_len"])
 
     train_config = config["train"]
     optimiser = optim.Adam(
@@ -223,9 +225,8 @@ if __name__ == "__main__":
 
         if ((iter + 1) % config["test_interval"]) == 0:
             # Test performance using MPC
-            transition_model_chosen_actions = copy.deepcopy(transition_model)
-            transition_model_for_candidates = copy.deepcopy(transition_model)
-            dyn = LearnedDynamics(args.env, transition_model_for_candidates)
+            transition_model_mpc = copy.deepcopy(transition_model)
+            dyn = LearnedDynamics(args.env, transition_model_mpc, env.action_size, env.observation_size)
             mpc = ModelPredictiveControl(dyn)
             mpc.control_horizon_simulate = config["mpc"]["planning_horizon"]
             max_nframes = 30
@@ -235,7 +236,7 @@ if __name__ == "__main__":
 
             (generated_t0_rewards,
             generated_t0_prior_states,
-            generated_t0_beliefs) = transition_model.forward_generate(torch.zeros(1, 1, 1), obs_0=state)
+            generated_t0_beliefs) = transition_model_mpc.forward_generate(torch.zeros(1, 1, 1), obs_0=state)
 
             current_state = generated_t0_prior_states[0]
             current_belief = generated_t0_beliefs
@@ -265,7 +266,7 @@ if __name__ == "__main__":
                 action_torch[0, 0, :] = torch.from_numpy(action)
                 (generated_rewards,
                 generated_prior_states,
-                generated_beliefs) = transition_model.forward_generate(action_torch, prev_state=current_state, prev_belief=current_belief)
+                generated_beliefs) = transition_model_mpc.forward_generate(action_torch, prev_state=current_state, prev_belief=current_belief)
                 
                 # Update current_state and current_belief
                 current_state = generated_t0_prior_states[0]
@@ -279,7 +280,7 @@ if __name__ == "__main__":
                 state = next_state.squeeze()
 
                 if done:
-                    print(f"Test episode completed. Survived {i} episodes. Total reward is {avg_reward_per_episode}")
                     break
+            print(f"Test episode completed. Survived {i} episodes. Total reward is {avg_reward_per_episode}")
 
 

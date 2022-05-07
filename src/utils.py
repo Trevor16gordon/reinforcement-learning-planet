@@ -13,26 +13,29 @@ from Models import SSM, MODEL_DICT
 
 import numpy
 import torch
-
+import pdb
 
 def gather_data(
     env: BaseEnv, 
     memory: ExperienceReplay, 
-    n_trajectories: int = 5
+    n_trajectories: int = 5,
+    max_episode_len: int = 200
 ) -> None:
     """
     Gather N trajectories using random actions and add the transitions to the
     experience replay memory.
     """
-
     for _ in range(n_trajectories):
         state = env.reset()
         done = False
+        i = 0
         while not done:
             action = env.sample_random_action()
             next_state, reward, done, info = env.step(action)
             memory.append(next_state, action, reward, done)
-
+            i += 1
+            if i > max_episode_len:
+                done = True
     env.close()
 
 def gather_data_for_testing(

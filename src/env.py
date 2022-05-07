@@ -180,7 +180,8 @@ class ControlSuiteEnv():
             return images_to_observation(self._env.physics.render(camera_id=0), self.bit_depth)
 
     def step(self, action):
-        action = action.detach().numpy()
+        if not isinstance(action, np.ndarray):
+            action = action.detach().numpy()
         reward = 0
         for k in range(self.action_repeat):
             state = self._env.step(action)
@@ -193,7 +194,8 @@ class ControlSuiteEnv():
             observation = torch.tensor(np.concatenate([np.asarray([obs]) if isinstance(obs, float) else obs for obs in state.observation.values()], axis=0), dtype=torch.float32).unsqueeze(dim=0)
         else:
             observation = images_to_observation(self._env.physics.render(camera_id=0), self.bit_depth)
-        return observation, reward, done
+        info = {}
+        return observation, reward, done, info
 
     def render(self):
         cv2.imshow('screen', self._env.physics.render(camera_id=0)[:, :, ::-1])
