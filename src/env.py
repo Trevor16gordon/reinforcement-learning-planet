@@ -125,9 +125,6 @@ class GymEnv(BaseEnv):
     def close(self):
         self._env.close()
 
-    def reset(self):
-        return self._env.reset()
-
     @property
     def observation_size(self):
         """ our environments will always return (3, 64, 64) images."""
