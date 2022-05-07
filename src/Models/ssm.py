@@ -222,7 +222,7 @@ class SSM(TransitionModel, nn.Module):
     def forward_generate(self, batched_actions,
             obs_0: Optional[torch.Tensor] = None,
             prev_state: Optional[torch.Tensor] = None,
-            prev_beliefs: Optional[torch.Tensor] = None):
+            prev_belief: Optional[torch.Tensor] = None):
         """Helper function to generate rewards / states
 
 
@@ -241,11 +241,11 @@ class SSM(TransitionModel, nn.Module):
         if (obs_0 is None) and (prev_state is None):
             raise ArgumentError("Need to pass in either t0 observation or prev_state")
 
-        if not len(obs_0.shape) > 3:
-            obs_0 = obs_0.unsqueeze(0)
-        assert obs_0.shape[1:] == self._obs_dim
 
         if prev_state is None:
+            if not len(obs_0.shape) > 3:
+                obs_0 = obs_0.unsqueeze(0)
+            assert obs_0.shape[1:] == self._obs_dim
             # Call forward once with observations to get posterior_state
             # Starting with actions, init_belief, init_state as zero
             # Actions will be used in the next call
@@ -298,6 +298,6 @@ class SSM(TransitionModel, nn.Module):
         #reconstructed_obs = self._decoder(generated_prior_states, generated_beliefs)
         #reconstructed_images = reconstructed_obs.permute(0, 2, 3, 1).detach().numpy()
         generated_rewards = generated_reward_preds.detach().numpy()
-        return generated_rewards, None#reconstructed_images
+        return generated_rewards, generated_prior_states, generated_beliefs
 
         

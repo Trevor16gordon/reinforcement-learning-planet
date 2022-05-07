@@ -117,14 +117,14 @@ class LearnedDynamics():
         state_0 = torch.from_numpy(state_0).float()
         actions_multiple_timesteps = torch.from_numpy(actions_multiple_timesteps).float()
         if (self.model_state is None) and (self.model_belief is None):
-            resulting_rewards, resulting_next_states = self.transition_model.forward_generate(actions_multiple_timesteps, obs_0=state_0)
+            generated_rewards, generated_prior_states, generated_beliefs = self.transition_model.forward_generate(actions_multiple_timesteps, obs_0=state_0)
         else:
-            resulting_rewards, resulting_next_states = (
+            generated_rewards, generated_prior_states, generated_beliefs = (
                 self.transition_model.forward_generate(actions_multiple_timesteps, 
                                                        prev_state=self.model_state,
                                                        prev_belief=self.model_belief))
         resulting_dones = None
-        return resulting_next_states, resulting_rewards, resulting_dones
+        return None, generated_rewards, resulting_dones
 
 class ModelPredictiveControl():
 
@@ -142,7 +142,6 @@ class ModelPredictiveControl():
         elif cost_func == "cost_func_avg_closest_goal":
             self.cost_func = self.cost_func_avg_closest_goal
         self.dynamics = dynamics
-        self.control_horizon = 10
         self.control_horizon_simulate = 14
 
     def compute_action(self, state, goal):

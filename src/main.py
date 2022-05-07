@@ -223,13 +223,29 @@ if __name__ == "__main__":
 
         if ((iter + 1) % config["test_interval"]) == 0:
             # Test performance using MPC
-            transition_model_tst = copy.deepcopy(transition_model)
-            dyn = LearnedDynamics(args.env, transition_model_tst)
+            transition_model_chosen_actions = copy.deepcopy(transition_model)
+            transition_model_for_candidates = copy.deepcopy(transition_model)
+            dyn = LearnedDynamics(args.env, transition_model_for_candidates)
             mpc = ModelPredictiveControl(dyn)
             mpc.control_horizon_simulate = config["mpc"]["planning_horizon"]
             max_nframes = 30
             state = env.reset()
             state = state.squeeze()
+
+
+            (generated_t0_rewards,
+            generated_t0_prior_states,
+            generated_t0_beliefs) = transition_model.forward_generate(torch.zeros(1, 1, 1), obs_0=state)
+
+            current_state = generated_t0_prior_states[0]
+            current_belief = generated_t0_beliefs
+            # Need to repeat the prev_state and prev_belief batch number of times
+            current_state_repeat = current_state.repeat(config["mpc"]["candidates"], 1)
+            dyn.model_belief = current_belief
+            dyn.model_state = current_state_repeat
+
+
+            # Calculate belief_0 and prev_state_0: Might need to reshape as batch dimension will be 1
 
             avg_reward_per_episode = 0
             for i in range(max_nframes):
@@ -243,6 +259,20 @@ if __name__ == "__main__":
                 action = best_actions[0, :]
                 print(f"stepping action as {action}")
                 next_state, reward, done, info  = env.step(action)
+
+                # Update for transition model keeping track of chosen states
+                action_torch = torch.ones(1, 1, env.action_size)
+                action_torch[0, 0, :] = torch.from_numpy(action)
+                (generated_rewards,
+                generated_prior_states,
+                generated_beliefs) = transition_model.forward_generate(action_torch, prev_state=current_state, prev_belief=current_belief)
+                
+                # Update current_state and current_belief
+                current_state = generated_t0_prior_states[0]
+                current_state_repeat = current_state.repeat(config["mpc"]["candidates"], 1)
+                current_belief = generated_t0_beliefs
+                dyn.model_belief = current_belief
+                dyn.model_state = current_state_repeat 
 
                 avg_reward_per_episode += reward
                 
