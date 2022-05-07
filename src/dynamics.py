@@ -5,8 +5,9 @@ Classes relating to the dynamics
 import gym
 import numpy as np
 import pdb
-# from environment import make_env
+from env import GymEnv
 from stable_baselines3.common.vec_env import DummyVecEnv, SubprocVecEnv
+from utils import forward_generate
 
 class DynamicsBase():
     """Base class for environment dynamics stepping
@@ -85,6 +86,39 @@ class TrueDynamics():
         envs.close()
         return resulting_next_states, resulting_rewards, resulting_dones
 
+
+class LearnedDynamics():
+
+    def __init__(self, env_name, transition_model):
+        super(LearnedDynamics, self).__init__()
+        self.env_name = env_name
+        self.transition_model = transition_model
+        self.model_belief = None
+        self.model_state = None
+
+    def advance_multiple_timesteps(self, state_0, actions_multiple_timesteps):
+        """Advance multiple steps in the dynamics
+
+        Args:
+            actions_multiple_timesteps (np.array): Shape should be (num_timesteps, self.num_env,  self.env_action_dim)
+            action (np.array): Shape should be (self.num_env, self.env_action_dim)
+            state_0 (np.array): Shape should be (self.num_env, self.env_state_dim)
+
+        Returns:
+            next_states (np.array): Shape is (num_timesteps, self.num_env, self.env_state_dim)
+            rewards (np.array): Shape is (num_timesteps, self.num_env, 1)
+            dones (np.array): Shape is (num_timesteps, self.num_env, 1)
+        """
+    
+        if (self.model_state is None) and (self.model_belief is None):
+            resulting_rewards, resulting_next_states = self.transition_model.forward_generate(actions_multiple_timesteps, obs_0=state_0)
+        else:
+            resulting_rewards, resulting_next_states = (
+                self.transition_model.forward_generate(actions_multiple_timesteps, 
+                                                       prev_state=self.model_state,
+                                                       prev_belief=self.model_belief))
+        resulting_dones = None
+        return resulting_next_states, resulting_rewards, resulting_dones
 
 class ModelPredictiveControl():
 
