@@ -51,6 +51,39 @@ def gather_data_for_testing(
     observations, actions, rewards, nonterminals = memory.sample(1, rollout_len)
     return (observations, actions, rewards, nonterminals)
 
+def load_model_from_path(path_to_model):
+    """Load a saved model
+
+    Args:
+        path_to_model (str): Path to .pkl model file
+            The saved checkpoint must contain the following keys:
+            state_dict, env_name, model_config, model, env_config, seed
+    """
+    device_name = "cuda" if torch.cuda.is_available() else "cpu"
+    device = torch.device(device_name)
+    checkpoint = torch.load(path_to_model)
+
+    assert "state_dict" in checkpoint.keys()
+    assert "env_name" in checkpoint.keys()
+    assert "model_config" in checkpoint.keys()
+    assert "model" in checkpoint.keys()
+    assert "env_config" in checkpoint.keys()
+    assert "seed" in checkpoint.keys()
+
+    model = checkpoint["model"]
+    env = GymEnv(
+        checkpoint["env_name"],
+        checkpoint["seed"],
+        **checkpoint["env_config"],
+    )
+    
+    transition_model = MODEL_DICT[model](
+        env.observation_size, env.action_size, device, **checkpoint["model_config"]
+    )
+
+    transition_model.load_state_dict(checkpoint["state_dict"])
+    return transition_model, checkpoint
+
 def gather_reconstructed_images_from_saved_model(path_to_model, rollout_len=10):
     """Load a saved model and generated original and reconstructed VAE images
 
@@ -64,30 +97,9 @@ def gather_reconstructed_images_from_saved_model(path_to_model, rollout_len=10):
          original_images, reconstructed_images (np.array, np.array):
     """
 
-    device_name = "cuda" if torch.cuda.is_available() else "cpu"
-    device = torch.device(device_name)
-    checkpoint = torch.load(path_to_model)
-
-    assert "state_dict" in checkpoint.keys()
-    assert "env_name" in checkpoint.keys()
-    assert "model_config" in checkpoint.keys()
-    assert "model" in checkpoint.keys()
-    assert "env_config" in checkpoint.keys()
-    assert "seed" in checkpoint.keys()
-
+    transition_model, checkpoint = load_model_from_path(path_to_model)
     env_name = checkpoint["env_name"]
-    model = checkpoint["model"]
-    env = GymEnv(
-        checkpoint["env_name"],
-        checkpoint["seed"],
-        **checkpoint["env_config"],
-    )
     
-    transition_model = MODEL_DICT[model](
-        env.observation_size, env.action_size, device, **checkpoint["model_config"]
-    )
-
-    transition_model.load_state_dict(checkpoint["state_dict"])
     (observations, actions, rewards, nonterminals) = gather_data_for_testing(env_name, rollout_len)
 
     init_belief = torch.zeros(1, 0)
