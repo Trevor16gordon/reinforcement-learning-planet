@@ -116,9 +116,9 @@ class SSM(TransitionModel, nn.Module):
                 This is training mode, so we perform both generative modeling with the transition model,
                 and inference using the posterior model.
 
-            prev_state:     torch.Tensor[seq_length, batch_size, state_size] 
+            prev_state:     torch.Tensor[batch_size, state_size] 
             actions:        torch.Tensor[seq_length, batch_size, act_size] 
-            prev_beliefs:   torch.Tensor[seq_length, batch_size, belief_size] 
+            prev_beliefs:   torch.Tensor[batch_size, belief_size] 
             observations:   torch.Tensor[seq_length, batch_size, embed_size] 
             non_terminals:  torch.Tensor[seq_length, batch_size, 1] 
 
@@ -250,7 +250,7 @@ class SSM(TransitionModel, nn.Module):
             # Starting with actions, init_belief, init_state as zero
             # Actions will be used in the next call
             seq_length, batch_size, action_size = batched_actions.shape
-            init_belief = torch.zeros(batch_size, 0)
+            init_belief = torch.zeros(batch_size, self._belief_size)
             init_state = torch.zeros(batch_size, self._state_size)
             init_action = torch.zeros(1, batch_size, self._act_size)
             encoded_observation_0 = self.encode(obs_0)

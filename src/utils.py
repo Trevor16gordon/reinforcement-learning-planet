@@ -156,20 +156,16 @@ def rollout_using_mpc(dyn, transition_model_mpc, env, mpc_config, memory=None, a
             max_action_clip=env.action_range[1])
     mpc.control_horizon_simulate = mpc_config["planning_horizon"]
     state = env.reset().squeeze()
-    (generated_t0_rewards,
-    generated_t0_prior_states,
-    generated_t0_beliefs) = transition_model_mpc.forward_generate(torch.zeros(1, 1, 1), obs_0=state)
-
-    current_state = generated_t0_prior_states[0]
-    current_belief = generated_t0_beliefs
-    # Need to repeat the prev_state and prev_belief batch number of times
-    current_state_repeat = current_state.repeat(mpc_config["candidates"], 1)
-    dyn.model_belief = current_belief
-    dyn.model_state = current_state_repeat
-    # Calculate belief_0 and prev_state_0: Might need to reshape as batch dimension will be 1
     avg_reward_per_episode = 0
     done = False
+    pdb.set_trace()
     while not done:
+        current_model_state, current_model_belief = transition_model_mpc.observation_to_state_belief(state)
+        current_model_state_repeat = current_model_state.repeat(mpc_config["candidates"], 1)
+        current_model_belief_repeat = current_model_belief.repeat(mpc_config["candidates"], 1)  
+        dyn.model_state = current_model_state
+        dyn.model_belief = current_model_belief
+
         best_actions = mpc.compute_action_cross_entropy_method(
             state, 
             None, # No goal as using sum of rewards to select best action sequence
@@ -183,20 +179,6 @@ def rollout_using_mpc(dyn, transition_model_mpc, env, mpc_config, memory=None, a
         next_state, reward, done, info  = env.step(action)
         if memory is not None:
             memory.append(next_state, action, reward, done)
-        # Adding MPC test data to memory buffer as well
-        # memory.append(next_state, action, reward, done)
-        # Update for transition model keeping track of chosen states
-        action_torch = torch.ones(1, 1, env.action_size)
-        action_torch[0, 0, :] = torch.from_numpy(action)
-        (generated_rewards,
-        generated_prior_states,
-        generated_beliefs) = transition_model_mpc.forward_generate(action_torch, prev_state=current_state, prev_belief=current_belief)
-        # Update current_state and current_belief
-        current_state = generated_prior_states[0]
-        current_state_repeat = current_state.repeat(mpc_config["candidates"], 1)
-        current_belief = generated_t0_beliefs
-        dyn.model_belief = current_belief
-        dyn.model_state = current_state_repeat 
         avg_reward_per_episode += reward
         state = next_state.squeeze()
     print(f"avg_reward_per_episode is {avg_reward_per_episode}")

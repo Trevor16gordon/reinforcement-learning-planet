@@ -112,16 +112,10 @@ class LearnedDynamics():
             rewards (np.array): Shape is (num_timesteps, self.num_env, 1)
             dones (np.array): Shape is (num_timesteps, self.num_env, 1)
         """
-
         state_0 = torch.from_numpy(state_0).float()
         actions_multiple_timesteps = torch.from_numpy(actions_multiple_timesteps).float()
-        if (self.model_state is None) and (self.model_belief is None):
-            generated_rewards, generated_prior_states, generated_beliefs = self.transition_model.forward_generate(actions_multiple_timesteps, obs_0=state_0)
-        else:
-            generated_rewards, generated_prior_states, generated_beliefs = (
-                self.transition_model.forward_generate(actions_multiple_timesteps, 
-                                                       prev_state=self.model_state,
-                                                       prev_belief=self.model_belief))
+        (_,_,_,_,_,_,_,generated_rewards) = self.transition_model(self.model_state, actions_multiple_timesteps, self.model_belief)
+        generated_rewards = generated_rewards.detach().numpy()
         resulting_dones = None
         return None, generated_rewards, resulting_dones
 

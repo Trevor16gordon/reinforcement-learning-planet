@@ -161,6 +161,43 @@ class TransitionModel(ABC):
 
         return embeddings
 
+    def observation_to_state_belief(self,
+            obs_0: Optional[torch.Tensor]):
+        """Helper function to encode first observation
+
+        Args:
+            obs_0 (torch.Tensor(1, *self._obs_size)): The first observation
+        """
+        if not len(obs_0.shape) > 3:
+            obs_0 = obs_0.unsqueeze(0)
+        assert obs_0.shape[1:] == self._obs_dim
+        
+        batch_size = 1
+        init_belief = torch.zeros(batch_size, self._belief_size)
+        init_state = torch.zeros(batch_size, self._state_size)
+        init_action = torch.zeros(1, batch_size, self._act_size)
+        encoded_observation_0 = self.encode(obs_0)
+        if not len(encoded_observation_0.shape) >= 3:
+            encoded_observation_0 = encoded_observation_0.unsqueeze(0)
+        (
+            t0_beliefs,
+            _,#t0_prior_states,
+            _,#t0_prior_means,
+            _,#t0_prior_stddvs,
+            t0_posterior_state,
+            _,#t0_posterior_means,
+            _,#t0_posterior_stddvs,
+            _,#t0_reward_preds,
+        ) = self.forward(
+            init_state,
+            init_action,
+            init_belief,
+            encoded_observation_0
+        )
+        t0_prev_state = t0_posterior_state.unsqueeze(0)
+        t0_prev_belief = t0_beliefs.unsqueeze(0)
+        return t0_prev_state, t0_prev_belief
+
     @abstractmethod
     def decode(self, posterior: torch.Tensor, belief: torch.Tensor):
         """pass the posterior state and belief state through the decoder."""
