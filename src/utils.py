@@ -10,9 +10,12 @@ from data import ExperienceReplay
 from Models.base import TransitionModel
 from env import BaseEnv, GymEnv
 from Models import SSM, MODEL_DICT
+from dynamics import ModelPredictiveControl
 
+import copy
 import numpy
 import torch
+import numpy as np
 import pdb
 
 def gather_data(
@@ -134,7 +137,67 @@ def gather_reconstructed_images_from_saved_model(path_to_model, rollout_len=10):
     original_images = observations.squeeze().permute(0, 2, 3, 1).detach().numpy()
 
     return original_images, reconstructed_images
-    
+
+def rollout_using_mpc(dyn, transition_model_mpc, env, mpc_config, max_episode_len, memory=None, action_noise_variance=None):
+    """Rollout an episode using the MPC to choose the best actions
+
+    Args:
+        dyn (LearnedDynamics): 
+        transition_model_mpc (Models.Base): The trained transition model
+        env (BaseEnv): The environment. It will be reset in this function
+        mpc_config (dict): See mpc config in Configs.base.yaml
+        max_episode_len (int): The max length of episode
+        memory (ExperienceReplay, optional): If given, the experience will be added to the memory buffer
+        action_noise_variance (int, optional): If given, uniform noise with this variance will be added to the action
+    """
+    mpc = ModelPredictiveControl(dyn)
+    mpc.control_horizon_simulate = mpc_config["planning_horizon"]
+    state = env.reset().squeeze()
+    (generated_t0_rewards,
+    generated_t0_prior_states,
+    generated_t0_beliefs) = transition_model_mpc.forward_generate(torch.zeros(1, 1, 1), obs_0=state)
+
+    current_state = generated_t0_prior_states[0]
+    current_belief = generated_t0_beliefs
+    # Need to repeat the prev_state and prev_belief batch number of times
+    current_state_repeat = current_state.repeat(mpc_config["candidates"], 1)
+    dyn.model_belief = current_belief
+    dyn.model_state = current_state_repeat
+    # Calculate belief_0 and prev_state_0: Might need to reshape as batch dimension will be 1
+    avg_reward_per_episode = 0
+    for i in range(max_episode_len):
+        best_actions = mpc.compute_action_cross_entropy_method(
+            state, 
+            None, # No goal as using sum of rewards to select best action sequence
+            num_iterations=mpc_config["optimization_iters"],
+            j=mpc_config["candidates"], 
+            k=mpc_config["top_candidates"])
+        action = best_actions[0, :]
+
+        if action_noise_variance is not None:
+            action += np.random.normal(loc=0, scale=action_noise_variance, size=action.shape)
+        next_state, reward, done, info  = env.step(action)
+        if memory is not None:
+            memory.append(next_state, action, reward, done)
+        # Adding MPC test data to memory buffer as well
+        # memory.append(next_state, action, reward, done)
+        # Update for transition model keeping track of chosen states
+        action_torch = torch.ones(1, 1, env.action_size)
+        action_torch[0, 0, :] = torch.from_numpy(action)
+        (generated_rewards,
+        generated_prior_states,
+        generated_beliefs) = transition_model_mpc.forward_generate(action_torch, prev_state=current_state, prev_belief=current_belief)
+        # Update current_state and current_belief
+        current_state = generated_t0_prior_states[0]
+        current_state_repeat = current_state.repeat(mpc_config["candidates"], 1)
+        current_belief = generated_t0_beliefs
+        dyn.model_belief = current_belief
+        dyn.model_state = current_state_repeat 
+        avg_reward_per_episode += reward
+        state = next_state.squeeze()
+        if done:
+            break
+    return avg_reward_per_episode
 
 def compute_loss(
     transition_model: TransitionModel,
