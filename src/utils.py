@@ -138,7 +138,7 @@ def gather_reconstructed_images_from_saved_model(path_to_model, rollout_len=10):
 
     return original_images, reconstructed_images
 
-def rollout_using_mpc(dyn, transition_model_mpc, env, mpc_config, max_episode_len, memory=None, action_noise_variance=None):
+def rollout_using_mpc(dyn, transition_model_mpc, env, mpc_config, memory=None, action_noise_variance=None):
     """Rollout an episode using the MPC to choose the best actions
 
     Args:
@@ -168,7 +168,8 @@ def rollout_using_mpc(dyn, transition_model_mpc, env, mpc_config, max_episode_le
     dyn.model_state = current_state_repeat
     # Calculate belief_0 and prev_state_0: Might need to reshape as batch dimension will be 1
     avg_reward_per_episode = 0
-    for i in range(max_episode_len):
+    done = False
+    while not done:
         best_actions = mpc.compute_action_cross_entropy_method(
             state, 
             None, # No goal as using sum of rewards to select best action sequence
@@ -198,8 +199,7 @@ def rollout_using_mpc(dyn, transition_model_mpc, env, mpc_config, max_episode_le
         dyn.model_state = current_state_repeat 
         avg_reward_per_episode += reward
         state = next_state.squeeze()
-        if done:
-            break
+    print(f"avg_reward_per_episode is {avg_reward_per_episode}")
     return avg_reward_per_episode
 
 def compute_loss(

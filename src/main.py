@@ -222,7 +222,6 @@ if __name__ == "__main__":
             transition_model,
             env,
             config["mpc_data_collection"],
-            config["max_episode_len"],
             memory=memory,
             action_noise_variance=config["mpc_data_collection"]["exploration_noise"])
         transition_model.train(True)
@@ -249,7 +248,6 @@ if __name__ == "__main__":
                 transition_model,
                 env,
                 config["mpc"],
-                config["max_episode_len"],
                 memory=None,
                 action_noise_variance=None)
             total_test_reward += avg_reward_per_episode
