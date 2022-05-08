@@ -194,8 +194,8 @@ class TransitionModel(ABC):
             init_belief,
             encoded_observation_0
         )
-        t0_prev_state = t0_posterior_state.unsqueeze(0)
-        t0_prev_belief = t0_beliefs.unsqueeze(0)
+        t0_prev_state = t0_posterior_state.squeeze(0)
+        t0_prev_belief = t0_beliefs.squeeze(0)
         return t0_prev_state, t0_prev_belief
 
     @abstractmethod

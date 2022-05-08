@@ -158,13 +158,12 @@ def rollout_using_mpc(dyn, transition_model_mpc, env, mpc_config, memory=None, a
     state = env.reset().squeeze()
     avg_reward_per_episode = 0
     done = False
-    pdb.set_trace()
     while not done:
         current_model_state, current_model_belief = transition_model_mpc.observation_to_state_belief(state)
         current_model_state_repeat = current_model_state.repeat(mpc_config["candidates"], 1)
         current_model_belief_repeat = current_model_belief.repeat(mpc_config["candidates"], 1)  
-        dyn.model_state = current_model_state
-        dyn.model_belief = current_model_belief
+        dyn.model_state = current_model_state_repeat
+        dyn.model_belief = current_model_belief_repeat
 
         best_actions = mpc.compute_action_cross_entropy_method(
             state, 
