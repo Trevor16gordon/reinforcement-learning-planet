@@ -98,8 +98,9 @@ if __name__ == "__main__":
     transition_model = MODEL_DICT[args.model](
         env.observation_size, env.action_size, device, **model_config
     ).to(device)
+    transition_model.train(True)
 
-    gather_data(env, memory, config["seed_episodes"], config["max_episode_len"])
+    max_train_episode_reward = gather_data(env, memory, config["seed_episodes"])
 
     train_config = config["train"]
     optimiser = optim.Adam(
@@ -146,9 +147,12 @@ if __name__ == "__main__":
         'episodes': [], 
         'train_rewards': [], 
         'test_episodes': [], 
-        'test_rewards': []
+        'test_rewards': [],
+        'max_train_episode_reward': []
     }
-
+    total_test_reward = 0
+    num_test = 1
+    
     for iter in range(train_config["train_iters"]):
         loss = 0
 
@@ -193,7 +197,6 @@ if __name__ == "__main__":
         losses["rew_loss"] = rew_loss.item()
         losses["sum_loss"] = loss.item()
 
-        print(loss.item())
         if 0 < train_config["global_kl_beta"]:
             loss += train_config["global_kl_beta"] * transition_model.kl_loss(
                 global_prior_means,
@@ -212,7 +215,10 @@ if __name__ == "__main__":
         print(losses)
 
         # Data Collection
-        gather_data(env, memory, 1, config["max_episode_len"]/config["env"]["action_repeat"])
+        max_reward_seen_batch = gather_data(env, memory, 1)
+        max_train_episode_reward = max(max_train_episode_reward, max_reward_seen_batch)
+        losses["max_train_episode_reward"] = max_train_episode_reward
+        print(losses)
 
         if ((iter + 1) % config["checkpoint_interval"]) == 0:
             model_save_info = {
@@ -225,7 +231,6 @@ if __name__ == "__main__":
                 }
             torch.save(model_save_info, f"transition_model2_{iter}.pkl")
 
-
         if ((iter + 1) % config["test_interval"]) == 0:
             # Test performance using MPC
             transition_model_mpc = copy.deepcopy(transition_model)
@@ -233,11 +238,8 @@ if __name__ == "__main__":
             dyn = LearnedDynamics(args.env, transition_model_mpc, env.action_size, env.observation_size)
             mpc = ModelPredictiveControl(dyn)
             mpc.control_horizon_simulate = config["mpc"]["planning_horizon"]
-            max_nframes = 50
-            state = env.reset()
-            state = state.squeeze()
-
-
+            max_nframes = config["max_episode_len"]
+            state = env.reset().squeeze()
             (generated_t0_rewards,
             generated_t0_prior_states,
             generated_t0_beliefs) = transition_model_mpc.forward_generate(torch.zeros(1, 1, 1), obs_0=state)
@@ -248,10 +250,7 @@ if __name__ == "__main__":
             current_state_repeat = current_state.repeat(config["mpc"]["candidates"], 1)
             dyn.model_belief = current_belief
             dyn.model_state = current_state_repeat
-
-
             # Calculate belief_0 and prev_state_0: Might need to reshape as batch dimension will be 1
-
             avg_reward_per_episode = 0
             for i in range(max_nframes):
                 best_actions = mpc.compute_action_cross_entropy_method(
@@ -260,34 +259,28 @@ if __name__ == "__main__":
                     num_iterations=config["mpc"]["optimization_iters"],
                     j=config["mpc"]["candidates"], 
                     k=config["mpc"]["top_candidates"])
-
                 action = best_actions[0, :]
-                print(f"stepping action as {action}")
                 next_state, reward, done, info  = env.step(action)
-
                 # Adding MPC test data to memory buffer as well
                 memory.append(next_state, action, reward, done)
-
                 # Update for transition model keeping track of chosen states
                 action_torch = torch.ones(1, 1, env.action_size)
                 action_torch[0, 0, :] = torch.from_numpy(action)
                 (generated_rewards,
                 generated_prior_states,
                 generated_beliefs) = transition_model_mpc.forward_generate(action_torch, prev_state=current_state, prev_belief=current_belief)
-                
                 # Update current_state and current_belief
                 current_state = generated_t0_prior_states[0]
                 current_state_repeat = current_state.repeat(config["mpc"]["candidates"], 1)
                 current_belief = generated_t0_beliefs
                 dyn.model_belief = current_belief
                 dyn.model_state = current_state_repeat 
-
                 avg_reward_per_episode += reward
-                
                 state = next_state.squeeze()
-
                 if done:
                     break
-            print(f"Test episode completed. Survived {i} episodes. Total reward is {avg_reward_per_episode}")
+            total_test_reward += avg_reward_per_episode
+            num_test += 1
+            print(f"Test episode completed. Survived {i} episodes. Average tst reward so far {total_test_reward/num_test} Last test reward {avg_reward_per_episode}")
 
 
