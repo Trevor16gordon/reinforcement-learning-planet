@@ -253,7 +253,7 @@ if __name__ == "__main__":
                 memory=None,
                 action_noise_variance=None)
             total_test_reward += avg_reward_per_episode
-            print(f"Test episode completed. Survived {i} episodes. Average tst reward so far {total_test_reward/num_test} Last test reward {avg_reward_per_episode}")
+            print(f"Test episode completed. Average tst reward so far {total_test_reward/num_test} Last test reward {avg_reward_per_episode}")
             num_test += 1
             transition_model.train(True)
 
