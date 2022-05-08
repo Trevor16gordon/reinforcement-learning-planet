@@ -188,7 +188,7 @@ def rollout_using_mpc(dyn, transition_model_mpc, env, mpc_config, max_episode_le
         generated_prior_states,
         generated_beliefs) = transition_model_mpc.forward_generate(action_torch, prev_state=current_state, prev_belief=current_belief)
         # Update current_state and current_belief
-        current_state = generated_t0_prior_states[0]
+        current_state = generated_prior_states[0]
         current_state_repeat = current_state.repeat(mpc_config["candidates"], 1)
         current_belief = generated_t0_beliefs
         dyn.model_belief = current_belief
