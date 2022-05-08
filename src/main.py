@@ -15,7 +15,6 @@ from utils import gather_data, compute_loss
 
 import torch
 from torch import optim, nn
-from torch.distributions import Normal
 
 # from stable_baselines3.common.vec_env import DummyVecEnv
 from pathlib import Path
@@ -142,58 +141,22 @@ if __name__ == "__main__":
     }
 
     for itr in range(train_config["train_iters"]):
-        loss = 0
+        kl_loss, obs_loss, rew_loss, loss = compute_loss(
+            transition_model,
+            memory,
+            kl_clip,
+            global_prior_means,
+            global_prior_stddvs,
+            train_config,
+            args.model
+        )    
 
-        # Sample batch_size sequences of length at random from the replay buffer.
-        # Our sampled transitions are treated as starting from a random intial state at time 0.
-        observations, actions, rewards, nonterminals = memory.sample(
-            train_config["batch_size"], train_config["seq_length"]
-        )
-        
-        # we start all models with an initial state and belief of 0's
-        init_belief = torch.zeros( train_config["batch_size"], model_config["belief_size"]).to(device)
-        init_state = torch.zeros( train_config["batch_size"], model_config["state_size"]).to(device)
-
-        # encode the observations by passing them through the models encoder network.
-        encoded_observations = transition_model.encode(observations)
-        (
-            beliefs,
-            prior_states,
-            prior_means,
-            prior_stddvs,
-            posterior_states,
-            posterior_means,
-            posterior_stddvs,
-            reward_preds,
-        ) = transition_model(
-            init_state,
-            actions[:-1],
-            init_belief,
-            encoded_observations[1:],
-            nonterminals[:-1]
-        )
-
-        # The loss function is the sum of the reconstruction loss, the reward prediction loss, and the KL-divergence loss.
-        kl_loss = transition_model.kl_loss(prior_means, prior_stddvs, posterior_means, posterior_stddvs, kl_clip)
-        obs_loss = transition_model.observation_loss(posterior_states, beliefs, observations[1:])
-        rew_loss = transition_model.reward_loss(reward_preds, rewards[:-1])
-        loss = kl_loss + obs_loss + rew_loss
-
-        losses["kl_loss"] = kl_loss.item()
-        losses["obs_loss"] = obs_loss.item()
-        losses["rew_loss"] = rew_loss.item()
-        losses["sum_loss"] = loss.item()
+        losses["kl_loss"].append(kl_loss.item())
+        losses["obs_loss"].append(obs_loss.item())
+        losses["rew_loss"].append(rew_loss.item())
+        losses["sum_loss"].append(loss.item())
 
         print(loss.item())
-        # The Global KL divergence term is not applicable to the RNN based Transition model.
-        if 0 < train_config["global_kl_beta"] and args.model != 'rnn':
-            loss += train_config["global_kl_beta"] * transition_model.kl_loss(
-                global_prior_means,
-                global_prior_stddvs,
-                posterior_means,
-                posterior_stddvs,
-                kl_clip,
-            )
 
         # standard back prop step. Includes gradient clipping to help with training the RNN.
         optimiser.zero_grad()
