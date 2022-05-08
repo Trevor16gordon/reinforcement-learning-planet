@@ -76,6 +76,7 @@ mpc_data_collection:
   optimization_iters: 1
   candidates: 200
   top_candidates: 20
+  exploration_noise: 0.3
 
    
 # Miscellanious parameters for data collection

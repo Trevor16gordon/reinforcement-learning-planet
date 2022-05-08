@@ -224,7 +224,7 @@ if __name__ == "__main__":
             config["mpc_data_collection"],
             config["max_episode_len"],
             memory=memory,
-            action_noise_variance=0.03)
+            action_noise_variance=config["mpc_data_collection"]["exploration_noise"])
         transition_model.train(True)
 
         print(losses)
