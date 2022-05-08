@@ -12,10 +12,16 @@ import cv2
 
 from data import images_to_observation
 
-
-GYM_ENVS = ["InvertedPendulum-v2", "Pendulum-v1", "MountainCar-v0", "CartPole-v1"]
-CONTROL_SUITE_ENVS = ["ant-v2", "cartpole-swingup"]
-
+GYM_ENVS = [
+    'Pendulum-v0', 'MountainCarContinuous-v0', 'Ant-v2', 'HalfCheetah-v2',
+    'Hopper-v2', 'Humanoid-v2', 'HumanoidStandup-v2', 'InvertedDoublePendulum-v2', 
+    'InvertedPendulum-v2', 'Reacher-v2', 'Swimmer-v2', 'Walker2d-v2'
+]
+CONTROL_SUITE_ENVS = [
+    'cartpole-balance', 'cartpole-swingup', 'reacher-easy', 'finger-spin', 
+    'cheetah-run', 'ball_in_cup-catch', 'walker-walk'
+]
+CONTROL_SUITE_ACTION_REPEATS = {'cartpole': 8, 'reacher': 4, 'finger': 2, 'cheetah': 4, 'ball_in_cup': 6, 'walker': 2}
 
 class BaseEnv(ABC):
     """
@@ -192,9 +198,7 @@ class ControlSuiteEnv():
             done = state.last() or self.t == self.max_episode_length
             if done:
                 break
-        if self.symbolic:
-            observation = torch.tensor(np.concatenate([np.asarray([obs]) if isinstance(obs, float) else obs for obs in state.observation.values()], axis=0), dtype=torch.float32).unsqueeze(dim=0)
-        else:
+
             observation = images_to_observation(self._env.physics.render(camera_id=0), self.bit_depth)
         info = {}
         return observation, reward, done, info

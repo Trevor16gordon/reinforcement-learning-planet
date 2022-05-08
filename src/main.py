@@ -140,11 +140,11 @@ if __name__ == "__main__":
     global_start_time = time.time()
 
     # populate the memory buffer with random action data.
-    gather_data(env, memory, config["seed_episodes"])
+    gather_data(env, memory, train_config["seed_episodes"])
 
     # Collect N episodes. Train the model at the end of each new episode. Intermitently run
     # 10 episodes of MPC to evaluate the models current performanc. 
-    for traj in range(config["episodes"]):
+    for traj in range(train_config["episodes"]):
         for itr in range(train_config["train_iters"]):
             kl_loss, obs_loss, rew_loss, loss = compute_loss(
                 transition_model,
@@ -168,7 +168,7 @@ if __name__ == "__main__":
             optimiser.step()
 
         # generate a video of the original trajectory alongside the models reconstruction.
-        if traj % 10 == 0:
+        if traj % 50 == 0:
             transition_model.eval()
 
             with torch.no_grad():
@@ -186,7 +186,6 @@ if __name__ == "__main__":
                         action, 
                         observation.to(device=device),
                     )
-                    total_reward += reward
                     video_frames.append(
                         (torch.cat([observation.squeeze(), transition_model.decode(belief, posterior_state).squeeze().cpu()], dim=2) + 0.5).numpy()
                     )
@@ -194,11 +193,11 @@ if __name__ == "__main__":
                     if done:
                         env.close()
                         break
-            write_video(video_frames, f"{args.model}_{traj}_episodes", "videos")
+            write_video(video_frames, f"{args.model}_{args.env}_{traj}_episodes", "videos")
 
        
 
-        if traj % 5 == 0:
+        if traj % 10 == 0:
             total_time = int(time.time() - global_start_time)
             total_secs, total_mins, total_hrs = total_time % 60, (total_time // 60) % 60, total_time // 3600
             print(f"Total Run Time: {total_hrs:02}:{total_mins:02}:{total_secs:02}\n" \
