@@ -59,8 +59,8 @@ def compute_loss(
     )
 
     # we start all models with an initial state and belief of 0's
-    init_belief = torch.zeros( train_config["batch_size"], model_config["belief_size"]).to(device)
-    init_state = torch.zeros( train_config["batch_size"], model_config["state_size"]).to(device)
+    init_belief = torch.zeros(train_config["batch_size"], transition_model._belief_size).to(transition_model._device)
+    init_state = torch.zeros(train_config["batch_size"], transition_model._state_size).to(transition_model._device)
 
     # encode the observations by passing them through the models encoder network.
     encoded_observations = transition_model.encode(observations)
