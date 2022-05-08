@@ -169,7 +169,8 @@ class ModelPredictiveControl():
 
             resulting_next_states, resulting_rewards, resulting_dones = self.dynamics.advance_multiple_timesteps(state0_duplicates, candidate_actions)
             costs = self.cost_func(resulting_next_states, resulting_rewards, resulting_dones, goal)
-
+            
+            # Setup to MINIMIZE the cost. 
             # Sort into top k cost action sequences
             idx = np.argpartition(costs, k)[:k]
             ids = idx[np.argsort(costs[idx])]
@@ -179,14 +180,14 @@ class ModelPredictiveControl():
             means = np.mean(top_action_seqs, axis=1).reshape((1, -1))
             stds = np.std(top_action_seqs, axis=1).reshape((1, -1))
         
-        best_action_seq = candidate_actions[:, ids[0], :]
-
-        return best_action_seq
+        #best_action_seq = candidate_actions[:, ids[0], :]
+        return means.T#best_action_seq
 
 
     def cost_func_default(self, next_states, rewards, dones, goal):
         """Default reward function that simply aggregates the total rewards
 
+        This module is setupt to minimize the cost. So we multiply the rewards as negative
         Args:
             next_states (np.array): Shape is (num_timesteps, self.num_env, self.env_state_dim)
             rewards (np.array): Shape is (num_timesteps, self.num_env, 1)
@@ -196,7 +197,7 @@ class ModelPredictiveControl():
         Returns
             rewards (np.array) Shape is (num_envs), 1
         """
-        return np.sum(rewards, axis=0)
+        return -1*np.sum(rewards, axis=0)
 
     def cost_func_closest_goal(self, next_states, rewards, dones, goal):
         """Returns the euclidian distance to the goal from the final state
