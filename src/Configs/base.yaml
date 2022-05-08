@@ -88,6 +88,7 @@ mpc_data_collection:
 test_interval: 5
 test_episodes: 10
 checkpoint_interval: 25
+updates_per_one_episode_collection: 100
 
 # total number of trajectories to collect.
 # and the initial number of trajectories to 
