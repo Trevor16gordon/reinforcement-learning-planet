@@ -8,25 +8,25 @@ This model will
 - Use the data loader to get data
 """
 
-from env import GymEnv, GYM_ENVS, CONTROL_SUITE_ENVS 
+from env import (
+        GymEnv,
+        ControlSuiteEnv, 
+        GYM_ENVS,
+        CONTROL_SUITE_ENVS, 
+        CONTROL_SUITE_ACTION_REPEATS 
+    )
 from data import ExperienceReplay
 from Models import MODEL_DICT
-from utils import gather_data, compute_loss
+from utils import gather_data, compute_loss, update_belief_and_act, write_video
 
 import torch
 from torch import optim, nn
 
-# from stable_baselines3.common.vec_env import DummyVecEnv
-from pathlib import Path
 import numpy as np
 import argparse
 import yaml
 import os
-import glob
 import time
-import cv2
-import gym
-
 
 
 if __name__ == "__main__":
@@ -36,8 +36,8 @@ if __name__ == "__main__":
     parser.add_argument("--id", type=str, default="default", help="Experiment ID")
     parser.add_argument("--save-path", type=str, default="", help="Path for saving model check points.")
     parser.add_argument("--seed", type=int, default=1, metavar="S", help="Random seed")
-    parser.add_argument( "--env", type=str, default="MountainCar-v0", help="Gym/Control Suite environment")
-    parser.add_argument( "--model", type=str, default="ssm", choices=["ssm", "rssm", "rnn"], help="Select the State Space Model to Train.",)
+    parser.add_argument( "--env", type=str, default="MountainCar-v0", choices=GYM_ENVS+CONTROL_SUITE_ENVS, help="Gym/Control Suite environment")
+    parser.add_argument( "--model", type=str, default="ssm", choices=list(MODEL_DICT.keys()), help="Select the State Space Model to Train.",)
     parser.add_argument("--render", type=bool, default=False, help="Render environment")
     parser.add_argument( "--config", type=str, default="base", help="Specify the yaml file to use in setting up experiment.",)
     parser.add_argument( "--config-path", type=str, default="Configs", help="Specify the directory the config file lives in.")
@@ -49,7 +49,7 @@ if __name__ == "__main__":
         config = yaml.safe_load(config_file)
     device_name = "cuda" if torch.cuda.is_available() else "cpu"
     device = torch.device(device_name)
-    print(f"\tExperiment ID: {args.id} \n\tRunning on device: {device}")
+    print(f"\tExperiment ID: {args.id} \n\tRunning on device: {device}\n")
 
 
     # set up directory for writing experiment results to.
@@ -62,14 +62,12 @@ if __name__ == "__main__":
     torch.cuda.manual_seed(args.seed)
 
     # instantiate the environment and the Experience replay buffer to collect trajectories.
-    """
     if args.env in GYM_ENVS:
         env = GymEnv 
     else:
-        # create comparable wrapper for control suite tasks
-        raise NotImplementedError("No Control Suite Wrapper written yet.")
-    """
-    env = GymEnv
+        env = ControlSuiteEnv 
+        config["env"]["action_repeat"] = CONTROL_SUITE_ACTION_REPEATS[args.env.split('-')[0]] 
+    
     env = env(
         args.env,
         args.seed,
@@ -90,7 +88,6 @@ if __name__ == "__main__":
         env.observation_size, env.action_size, device, **model_config
     ).to(device)
 
-    gather_data(env, memory, config["seed_episodes"])
 
     train_config = config["train"]
     optimiser = optim.Adam(
@@ -139,32 +136,82 @@ if __name__ == "__main__":
         'test_episodes': [], 
         'test_rewards': []
     }
+    
+    global_start_time = time.time()
 
-    for itr in range(train_config["train_iters"]):
-        kl_loss, obs_loss, rew_loss, loss = compute_loss(
-            transition_model,
-            memory,
-            kl_clip,
-            global_prior_means,
-            global_prior_stddvs,
-            train_config,
-            args.model
-        )    
+    # populate the memory buffer with random action data.
+    gather_data(env, memory, config["seed_episodes"])
 
-        losses["kl_loss"].append(kl_loss.item())
-        losses["obs_loss"].append(obs_loss.item())
-        losses["rew_loss"].append(rew_loss.item())
-        losses["sum_loss"].append(loss.item())
+    # Collect N episodes. Train the model at the end of each new episode. Intermitently run
+    # 10 episodes of MPC to evaluate the models current performanc. 
+    for traj in range(config["episodes"]):
+        for itr in range(train_config["train_iters"]):
+            kl_loss, obs_loss, rew_loss, loss = compute_loss(
+                transition_model,
+                memory,
+                kl_clip,
+                global_prior_means,
+                global_prior_stddvs,
+                train_config,
+                args.model
+            )    
 
-        print(loss.item())
+            losses["kl_loss"].append(kl_loss.item())
+            losses["obs_loss"].append(obs_loss.item())
+            losses["rew_loss"].append(rew_loss.item())
+            losses["sum_loss"].append(loss.item())
 
-        # standard back prop step. Includes gradient clipping to help with training the RNN.
-        optimiser.zero_grad()
-        loss.backward()
-        nn.utils.clip_grad_norm_(transition_model.parameters(), train_config["clip_grad_norm"], norm_type=2)
-        optimiser.step()
+            # standard back prop step. Includes gradient clipping to help with training the RNN.
+            optimiser.zero_grad()
+            loss.backward()
+            nn.utils.clip_grad_norm_(transition_model.parameters(), train_config["clip_grad_norm"], norm_type=2)
+            optimiser.step()
 
-        if ((itr + 1) % config["checkpoint_interval"]) == 0:
+        # generate a video of the original trajectory alongside the models reconstruction.
+        if traj % 10 == 0:
+            transition_model.eval()
+
+            with torch.no_grad():
+                observation, total_reward, video_frames = env.reset(), 0, []
+                belief = torch.zeros(1, model_config["belief_size"], device=device)
+                posterior_state = torch.zeros(1, model_config["state_size"], device=device)
+                action = -1 + 2*torch.rand(1, env.action_size, device=device)
+
+                for _ in range(200):
+                    belief, posterior_state, action, next_observation, reward, done = update_belief_and_act(
+                        env, 
+                        transition_model, 
+                        belief,
+                        posterior_state,
+                        action, 
+                        observation.to(device=device),
+                    )
+                    total_reward += reward
+                    video_frames.append(
+                        (torch.cat([observation.squeeze(), transition_model.decode(belief, posterior_state).squeeze().cpu()], dim=2) + 0.5).numpy()
+                    )
+                    observation = next_observation
+                    if done:
+                        env.close()
+                        break
+            write_video(video_frames, f"{args.model}_{traj}_episodes", "videos")
+
+       
+
+        if traj % 5 == 0:
+            total_time = int(time.time() - global_start_time)
+            total_secs, total_mins, total_hrs = total_time % 60, (total_time // 60) % 60, total_time // 3600
+            print(f"Total Run Time: {total_hrs:02}:{total_mins:02}:{total_secs:02}\n" \
+                  f"Trajectory {traj}: \n\tTotal Loss: {loss.item():.2f}" \
+                  f"\n\tObservation Loss {obs_loss.item():.2f}"
+                  f"\n\tReward Loss {rew_loss.item():.2f}"
+                  f"\n\tKL Loss {kl_loss.item():.2f}\n"
+            )
+
+        # naive data collection for now. Eventually integrate the MPC code to collect data
+        gather_data(env, memory, 1)
+
+        if (traj + 1) % config["checkpoint_interval"] == 0:
             model_save_info = {
                 "state_dict" : transition_model.state_dict(),
                 "env_name": args.env,
@@ -174,3 +221,4 @@ if __name__ == "__main__":
                 "seed": args.seed,
             }
             torch.save(model_save_info, os.path.join(args.save_path, f"{args.model}_{itr}.pkl"))
+
