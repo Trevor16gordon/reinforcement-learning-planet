@@ -53,7 +53,7 @@ train:
   lr_schedule: 0
   adam_epsilon: 0.0001
   batch_size: 64
-  train_iters: 500
+  train_iters: 2000
   seq_length: 10
 
   # weight parameters for KL-divergence and latent overshooting loss terms 
@@ -72,8 +72,8 @@ mpc:
 
 # Model Predictive Control Hyperparameters Just for data collection
 mpc_data_collection:
-  planning_horizon: 12
-  optimization_iters: 1
+  planning_horizon: 6
+  optimization_iters: 2
   candidates: 200
   top_candidates: 20
   exploration_noise: 0.3
@@ -94,7 +94,7 @@ checkpoint_interval: 25
 # add to the replay buffer (memory)
 episodes: 1000
 seed_episodes: 5
-max_episode_len: 200
+max_episode_len: 1000
 
 # magnitude of the random noise added to out
 # actions while collecting data.
