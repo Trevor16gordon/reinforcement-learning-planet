@@ -150,7 +150,10 @@ def rollout_using_mpc(dyn, transition_model_mpc, env, mpc_config, max_episode_le
         memory (ExperienceReplay, optional): If given, the experience will be added to the memory buffer
         action_noise_variance (int, optional): If given, uniform noise with this variance will be added to the action
     """
-    mpc = ModelPredictiveControl(dyn)
+    mpc = ModelPredictiveControl(
+            dyn, 
+            min_action_clip=env.action_range[0],
+            max_action_clip=env.action_range[1])
     mpc.control_horizon_simulate = mpc_config["planning_horizon"]
     state = env.reset().squeeze()
     (generated_t0_rewards,

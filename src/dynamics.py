@@ -127,7 +127,7 @@ class LearnedDynamics():
 
 class ModelPredictiveControl():
 
-    def __init__(self, dynamics, cost_func=None):
+    def __init__(self, dynamics, min_action_clip=None, max_action_clip=None, cost_func=None):
         """
 
         Args:
@@ -142,6 +142,8 @@ class ModelPredictiveControl():
             self.cost_func = self.cost_func_avg_closest_goal
         self.dynamics = dynamics
         self.control_horizon_simulate = 14
+        self.min_action_clip = min_action_clip
+        self.max_action_clip = max_action_clip
 
     def compute_action(self, state, goal):
         return self.compute_action_cross_entropy_method(state, goal)
@@ -166,7 +168,8 @@ class ModelPredictiveControl():
             candidate_actions = np.random.normal(loc=means, scale=stds, size=(j,  env_action_dim, num_timesteps))
             candidate_actions = np.swapaxes(candidate_actions, 0, 2)
             candidate_actions = np.swapaxes(candidate_actions, 1, 2)
-
+            if (self.min_action_clip is not None) and (self.max_action_clip is not None):
+                candidate_actions = np.clip(candidate_actions, self.min_action_clip, self.max_action_clip)
             resulting_next_states, resulting_rewards, resulting_dones = self.dynamics.advance_multiple_timesteps(state0_duplicates, candidate_actions)
             costs = self.cost_func(resulting_next_states, resulting_rewards, resulting_dones, goal)
             
