@@ -31,7 +31,7 @@ import cv2
 import gym
 import pdb
 import copy
-
+import tqdm
 
 
 GYM_ENVS = ["InvertedPendulum-v2", "Pendulum-v1", "MountainCar-v0", "CartPole-v1"]
@@ -154,7 +154,7 @@ if __name__ == "__main__":
     num_test = 1
     
     for iter in range(train_config["train_iters"]):
-        for update_i in range(config["updates_per_one_episode_collection"]):
+        for update_i in tqdm.tqdm(range(config["updates_per_one_episode_collection"])):
             loss = 0
             # Sample batch_size sequences of length at random from the replay buffer.
             # Our sampled transitions are treated as starting from a random intial state at time 0.

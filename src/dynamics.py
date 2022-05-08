@@ -115,7 +115,7 @@ class LearnedDynamics():
         state_0 = torch.from_numpy(state_0).float()
         actions_multiple_timesteps = torch.from_numpy(actions_multiple_timesteps).float()
         (_,_,_,_,_,_,_,generated_rewards) = self.transition_model(self.model_state, actions_multiple_timesteps, self.model_belief)
-        generated_rewards = generated_rewards.detach().numpy()
+        generated_rewards = generated_rewards.cpu().detach().numpy()
         resulting_dones = None
         return None, generated_rewards, resulting_dones
 

@@ -135,7 +135,7 @@ class SSM(TransitionModel, nn.Module):
                 rewards:            torch.Tensor[seq_length, batch_size]
 
         """
-
+        actions = actions.to(self._device)
         horizon = actions.size(0) + 1 # plus 1 for the previous state
 
         # create empty lists to store the model predictions. Note that we cannot use

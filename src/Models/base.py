@@ -168,14 +168,15 @@ class TransitionModel(ABC):
         Args:
             obs_0 (torch.Tensor(1, *self._obs_size)): The first observation
         """
+        obs_0 = obs_0.to(self._device)
         if not len(obs_0.shape) > 3:
             obs_0 = obs_0.unsqueeze(0)
         assert obs_0.shape[1:] == self._obs_dim
         
         batch_size = 1
-        init_belief = torch.zeros(batch_size, self._belief_size)
-        init_state = torch.zeros(batch_size, self._state_size)
-        init_action = torch.zeros(1, batch_size, self._act_size)
+        init_belief = torch.zeros(batch_size, self._belief_size).to(self._device)
+        init_state = torch.zeros(batch_size, self._state_size).to(self._device)
+        init_action = torch.zeros(1, batch_size, self._act_size).to(self._device)
         encoded_observation_0 = self.encode(obs_0)
         if not len(encoded_observation_0.shape) >= 3:
             encoded_observation_0 = encoded_observation_0.unsqueeze(0)
