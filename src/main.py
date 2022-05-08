@@ -58,7 +58,7 @@ if __name__ == "__main__":
     device_name = "cuda" if torch.cuda.is_available() else "cpu"
     device = torch.device(device_name)
     print(f"\tExperiment ID: {args.id} \n\tRunning on device: {device}")
-
+    print(f"device name is {device}")
 
     # set up directory for writing experiment results to.
     results_dir = os.path.join("results", args.id)
@@ -154,7 +154,7 @@ if __name__ == "__main__":
     num_test = 1
     
     for iter in range(train_config["train_iters"]):
-        for update_i in range(train_config["updates_per_one_episode_collection"]):
+        for update_i in range(config["updates_per_one_episode_collection"]):
             loss = 0
             # Sample batch_size sequences of length at random from the replay buffer.
             # Our sampled transitions are treated as starting from a random intial state at time 0.
@@ -166,7 +166,6 @@ if __name__ == "__main__":
             init_belief = torch.zeros( train_config["batch_size"], model_config["belief_size"]).to(device)
             init_state = torch.zeros( train_config["batch_size"], model_config["state_size"]).to(device)
 
-            optimiser.zero_grad()
             # encode the observations by passing them through the models encoder network.
             encoded_observations = transition_model.encode(observations)
             (
@@ -207,7 +206,7 @@ if __name__ == "__main__":
                 )
 
             # standard back prop step. Includes gradient clipping to help with training the RNN.
-            
+            optimiser.zero_grad() 
             loss.backward()
             nn.utils.clip_grad_norm_(transition_model.parameters(), train_config["grad_clip_norm"], norm_type=2)
             optimiser.step()
