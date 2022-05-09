@@ -184,7 +184,7 @@ if __name__ == "__main__":
             optimiser.step()
 
         # enerate a video of the original trajectory alongside the models reconstruction.
-        if traj % 25 == 0:
+        if traj % 5 == 0:
             transition_model.eval()
 
             with torch.no_grad():

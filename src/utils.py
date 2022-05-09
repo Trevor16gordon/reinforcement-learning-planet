@@ -36,28 +36,13 @@ def gather_data(
         while not done:
             action = env.sample_random_action()
             next_state, reward, done, info = env.step(action)
-            memory.append(next_state, action, reward, done)
+            memory.append(state, action, reward, done)
+            state = next_state
             i += 1
             episode_reward_tot += reward
         max_episode_reward_tot = max(max_episode_reward_tot, episode_reward_tot)
     env.close()
     return max_episode_reward_tot
-
-def gather_data_for_testing(
-    env_name: str = "CartPole-v1",
-    rollout_len: int = 10
-) -> None:
-    """
-    Gather data for one trajectory and return a sequence of rollout_len
-    """
-    env_wrapped = GymEnv(env_name, 1, False, 10000, 1, 8)
-    action_size = env_wrapped.action_size
-    observation_size = env_wrapped.observation_size
-    dev = torch.device("cpu")
-    memory = ExperienceReplay(action_size, observation_size, dev, 8, 1000, False)
-    gather_data(env_wrapped, memory, 1)
-    observations, actions, rewards, nonterminals = memory.sample(1, rollout_len)
-    return (observations, actions, rewards, nonterminals)
 
 def load_model_from_path(path_to_model):
     """Load a saved model
@@ -176,8 +161,10 @@ def rollout_using_mpc(dyn, transition_model_mpc, env, mpc_config, memory=None, a
         if action_noise_variance is not None:
             action += np.random.normal(loc=0, scale=action_noise_variance, size=action.shape)
         next_state, reward, done, info  = env.step(action)
+
         if memory is not None:
-            memory.append(next_state, action, reward, done)
+            memory.append(state, action, reward, done)
+            
         avg_reward_per_episode += reward
         state = next_state.squeeze()
     # print(f"avg_reward_per_episode is {avg_reward_per_episode}")
