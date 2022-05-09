@@ -182,11 +182,14 @@ class RSSM(TransitionModel, nn.Module):
             # otherwise, use the prior state (this occurs when the model is performing generative modeling)
             current_state = prior_states[t] if observations is None else posterior_states[t]
             current_state = current_state * non_terminal[t]
+
+            # We need to also zero out the RNN state if we are starting a new trajectory.
+            prior_belief = beliefs[t] * non_terminal[t]
             
             # compute the next belief state of the RNN. 
             state_actions = torch.cat([current_state, actions[t]], dim=1)
             state_act_embedding = self._embed_state_act(state_actions)
-            beliefs[t+1] = self._rnn(state_act_embedding, beliefs[t]) 
+            beliefs[t+1] = self._rnn(state_act_embedding, prior_belief) 
 
             # compute prior distribution of next state
             prior_means[t + 1], prior_log_stddvs = torch.chunk(self._transition(beliefs[t + 1]), 2, dim = 1)

@@ -97,7 +97,7 @@ if __name__ == "__main__":
     transition_model = MODEL_DICT[args.model](
         env.observation_size, env.action_size, device, **model_config
     ).to(device)
-    transition_model.train(True)
+    transition_model.train()
 
 
     train_config = config["train"]
@@ -184,7 +184,7 @@ if __name__ == "__main__":
             optimiser.step()
 
         # enerate a video of the original trajectory alongside the models reconstruction.
-        if traj % 50 == 0:
+        if traj % 25 == 0:
             transition_model.eval()
 
             with torch.no_grad():
@@ -193,7 +193,7 @@ if __name__ == "__main__":
                 posterior_state = torch.zeros(1, model_config["state_size"], device=device)
                 action = -1 + 2*torch.rand(1, env.action_size, device=device)
 
-                for _ in range(200):
+                for _ in range(500):
                     belief, posterior_state, action, next_observation, reward, done = update_belief_and_act(
                         env, 
                         transition_model, 
@@ -210,6 +210,7 @@ if __name__ == "__main__":
                         env.close()
                         break
             write_video(video_frames, f"{args.model}_{args.env}_{traj}_episodes", "videos")
+            transition_model.train()
 
         # Print Info
         if traj % 1 == 0:
@@ -237,7 +238,7 @@ if __name__ == "__main__":
                 config["mpc_data_collection"],
                 memory=memory,
                 action_noise_variance=config["mpc_data_collection"]["exploration_noise"])
-            transition_model.train(True)
+            transition_model.train()
 
         if ((traj + 1) % config["test_interval"]) == 0:
             # Test performance using MPC
@@ -249,20 +250,20 @@ if __name__ == "__main__":
                 env,
                 config["mpc"],
                 memory=None,
-                action_noise_variance=None)
+                action_noise_variance=None
+            )
             total_test_reward += avg_reward_per_episode
-            print(f"Test episode completed. Average tst reward so far {total_test_reward/num_test} Last test reward {avg_reward_per_episode}")
+            print(f"Test episode completed. Average test reward so far {total_test_reward/num_test} Last test reward {avg_reward_per_episode}")
             num_test += 1
-            transition_model.train(True)
+            transition_model.train()
             
         if (traj + 1) % config["checkpoint_interval"] == 0:
             model_save_info = {
-                "state_dict" : transition_model.state_dict(),
+                "model_state_dict" : transition_model.state_dict(),
                 "env_name": args.env,
                 "model_config": model_config,
                 "model": args.model,
                 "env_config": config["env"],
                 "seed": args.seed,
                 }
-            torch.save(model_save_info, f"transition_model_{iter}.pkl")
-
+            torch.save(model_save_info, f"transition_model_{traj}.pt")
