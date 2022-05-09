@@ -57,11 +57,11 @@ train:
   adam_epsilon: 0.0001
   batch_size: 64
   train_iters: 100
-  seq_length: 50
+  seq_length: 25
 
   # weight parameters for KL-divergence and latent overshooting loss terms 
   kl_clip: 3.0
-  global_kl_beta: 2.0
+  global_kl_beta: 0.0
   overshooting_kl_beta: 0
   overshooting_distance: 50
 
