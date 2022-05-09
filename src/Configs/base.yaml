@@ -42,7 +42,7 @@ memory:
 env:
   symbolic_env: False
   max_episode_length: 1000
-  action_repeat: 2 
+  action_repeat: 8 
   bit_depth: 5
  
 
@@ -70,8 +70,16 @@ train:
 mpc:
   planning_horizon: 12
   optimization_iters: 10
-  candidates: 1_000
+  candidates: 1000
   top_candidates: 100
+
+# Model Predictive Control Hyperparameters Just for data collection
+mpc_data_collection:
+  planning_horizon: 12
+  optimization_iters: 10
+  candidates: 1000
+  top_candidates: 100
+  exploration_noise: 0.3
 
    
 # Miscellanious parameters for data collection
@@ -80,9 +88,10 @@ mpc:
 # how frequently to test the model, the number of 
 # trajectories to test with, and how often to checkpoint 
 # our progress.
-test_interval: 50
+test_interval: 5
 test_episodes: 10
-checkpoint_interval: 50
+checkpoint_interval: 25
+updates_per_one_episode_collection: 100
 
 
 # magnitude of the random noise added to out

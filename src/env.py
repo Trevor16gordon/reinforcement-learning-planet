@@ -198,7 +198,9 @@ class ControlSuiteEnv():
             done = state.last() or self.t == self.max_episode_length
             if done:
                 break
-
+        if self.symbolic:
+            observation = torch.tensor(np.concatenate([np.asarray([obs]) if isinstance(obs, float) else obs for obs in state.observation.values()], axis=0), dtype=torch.float32).unsqueeze(dim=0)
+        else:
             observation = images_to_observation(self._env.physics.render(camera_id=0), self.bit_depth)
         info = {}
         return observation, reward, done, info

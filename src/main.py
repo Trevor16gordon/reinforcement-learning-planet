@@ -8,6 +8,11 @@ This model will
 - Use the data loader to get data
 """
 
+from env import GymEnv, ControlSuiteEnv
+from data import ExperienceReplay
+from Models import SSM, MODEL_DICT
+from utils import gather_data, compute_loss, rollout_using_mpc, update_belief_and_act, write_video
+from dynamics import ModelPredictiveControl, LearnedDynamics
 from env import (
         GymEnv,
         ControlSuiteEnv, 
@@ -15,9 +20,6 @@ from env import (
         CONTROL_SUITE_ENVS, 
         CONTROL_SUITE_ACTION_REPEATS 
     )
-from data import ExperienceReplay
-from Models import MODEL_DICT
-from utils import gather_data, compute_loss, update_belief_and_act, write_video
 
 import torch
 from torch import optim, nn
@@ -26,7 +28,12 @@ import numpy as np
 import argparse
 import yaml
 import os
+import tqdm
 import time
+import tqdm
+
+GYM_ENVS = ["InvertedPendulum-v2", "Pendulum-v1", "MountainCar-v0", "CartPole-v1"]
+CONTROL_SUITE_ENVS = ["ant-v2", "cartpole-swingup"]
 
 
 if __name__ == "__main__":
@@ -63,12 +70,15 @@ if __name__ == "__main__":
 
     # instantiate the environment and the Experience replay buffer to collect trajectories.
     if args.env in GYM_ENVS:
-        env = GymEnv 
-    else:
-        env = ControlSuiteEnv 
+        envClass = GymEnv
+    elif args.env in CONTROL_SUITE_ENVS:
+        envClass = ControlSuiteEnv
         config["env"]["action_repeat"] = CONTROL_SUITE_ACTION_REPEATS[args.env.split('-')[0]] 
+    else:
+        # create comparable wrapper for control suite tasks
+        raise NotImplementedError("No Control Suite Wrapper written yet.")
     
-    env = env(
+    env = envClass(
         args.env,
         args.seed,
         **config["env"],
@@ -87,6 +97,7 @@ if __name__ == "__main__":
     transition_model = MODEL_DICT[args.model](
         env.observation_size, env.action_size, device, **model_config
     ).to(device)
+    transition_model.train(True)
 
 
     train_config = config["train"]
@@ -134,9 +145,12 @@ if __name__ == "__main__":
         'episodes': [], 
         'train_rewards': [], 
         'test_episodes': [], 
-        'test_rewards': []
+        'test_rewards': [],
+        'max_train_episode_reward': []
     }
-    
+    total_test_reward = 0
+    num_test = 1
+
     global_start_time = time.time()
 
     # populate the memory buffer with random action data.
@@ -145,7 +159,9 @@ if __name__ == "__main__":
     # Collect N episodes. Train the model at the end of each new episode. Intermitently run
     # 10 episodes of MPC to evaluate the models current performanc. 
     for traj in range(train_config["episodes"]):
-        for itr in range(train_config["train_iters"]):
+
+        # Training
+        for itr in tqdm.tqdm(range(train_config["train_iters"])):
             kl_loss, obs_loss, rew_loss, loss = compute_loss(
                 transition_model,
                 memory,
@@ -167,7 +183,7 @@ if __name__ == "__main__":
             nn.utils.clip_grad_norm_(transition_model.parameters(), train_config["clip_grad_norm"], norm_type=2)
             optimiser.step()
 
-        # generate a video of the original trajectory alongside the models reconstruction.
+        # enerate a video of the original trajectory alongside the models reconstruction.
         if traj % 50 == 0:
             transition_model.eval()
 
@@ -195,9 +211,8 @@ if __name__ == "__main__":
                         break
             write_video(video_frames, f"{args.model}_{args.env}_{traj}_episodes", "videos")
 
-       
-
-        if traj % 10 == 0:
+        # Print Info
+        if traj % 1 == 0:
             total_time = int(time.time() - global_start_time)
             total_secs, total_mins, total_hrs = total_time % 60, (total_time // 60) % 60, total_time // 3600
             print(f"Total Run Time: {total_hrs:02}:{total_mins:02}:{total_secs:02}\n" \
@@ -207,9 +222,39 @@ if __name__ == "__main__":
                   f"\n\tKL Loss {kl_loss.item():.2f}\n"
             )
 
-        # naive data collection for now. Eventually integrate the MPC code to collect data
-        gather_data(env, memory, 1)
+        if config["mpc_data_collection"]["optimization_iters"] == 0:
+            # naive data collection for now. Eventually integrate the MPC code to collect data
+            gather_data(env, memory, 1)
 
+        else:
+            # Data Collection using MPC
+            transition_model.eval()
+            dyn = LearnedDynamics(args.env, transition_model, env.action_size, env.observation_size)
+            rollout_using_mpc(
+                dyn,
+                transition_model,
+                env,
+                config["mpc_data_collection"],
+                memory=memory,
+                action_noise_variance=config["mpc_data_collection"]["exploration_noise"])
+            transition_model.train(True)
+
+        if ((traj + 1) % config["test_interval"]) == 0:
+            # Test performance using MPC
+            transition_model.eval()
+            dyn = LearnedDynamics(args.env, transition_model, env.action_size, env.observation_size)
+            avg_reward_per_episode = rollout_using_mpc(
+                dyn,
+                transition_model,
+                env,
+                config["mpc"],
+                memory=None,
+                action_noise_variance=None)
+            total_test_reward += avg_reward_per_episode
+            print(f"Test episode completed. Average tst reward so far {total_test_reward/num_test} Last test reward {avg_reward_per_episode}")
+            num_test += 1
+            transition_model.train(True)
+            
         if (traj + 1) % config["checkpoint_interval"] == 0:
             model_save_info = {
                 "state_dict" : transition_model.state_dict(),
@@ -218,6 +263,6 @@ if __name__ == "__main__":
                 "model": args.model,
                 "env_config": config["env"],
                 "seed": args.seed,
-            }
-            torch.save(model_save_info, os.path.join(args.save_path, f"{args.model}_{itr}.pkl"))
+                }
+            torch.save(model_save_info, f"transition_model_{iter}.pkl")
 
