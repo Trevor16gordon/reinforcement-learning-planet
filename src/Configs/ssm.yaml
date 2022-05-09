@@ -1,3 +1,9 @@
+# this config file defines the necessary hyperparameters for traingin
+# The SSM model. The primary difference is that we use a 
+# global_KL_beta value of 1, rather than 0 for the RSSM and RNN models
+
+
+
 project: "E6691 Final: Learning Latent Dynamics for Planning from Pixels"
 authors: 
   - "Sam Fieldman"
@@ -61,7 +67,7 @@ train:
 
   # weight parameters for KL-divergence and latent overshooting loss terms 
   kl_clip: 3.0
-  global_kl_beta: 0.0
+  global_kl_beta: 1.0
   overshooting_kl_beta: 0
   overshooting_distance: 50
 
@@ -96,4 +102,3 @@ updates_per_one_episode_collection: 100
 
 # magnitude of the random noise added to out
 # actions while collecting data.
-action_noise: 0.3
