@@ -30,7 +30,7 @@ import yaml
 import os
 import tqdm
 import time
-
+import tqdm
 
 GYM_ENVS = ["InvertedPendulum-v2", "Pendulum-v1", "MountainCar-v0", "CartPole-v1"]
 CONTROL_SUITE_ENVS = ["ant-v2", "cartpole-swingup"]
@@ -161,7 +161,7 @@ if __name__ == "__main__":
     for traj in range(train_config["episodes"]):
 
         # Training
-        for itr in range(train_config["train_iters"]):
+        for itr in tqdm.tqdm(range(train_config["train_iters"])):
             kl_loss, obs_loss, rew_loss, loss = compute_loss(
                 transition_model,
                 memory,
@@ -212,7 +212,7 @@ if __name__ == "__main__":
             write_video(video_frames, f"{args.model}_{args.env}_{traj}_episodes", "videos")
 
         # Print Info
-        if traj % 10 == 0:
+        if traj % 1 == 0:
             total_time = int(time.time() - global_start_time)
             total_secs, total_mins, total_hrs = total_time % 60, (total_time // 60) % 60, total_time // 3600
             print(f"Total Run Time: {total_hrs:02}:{total_mins:02}:{total_secs:02}\n" \
@@ -239,7 +239,7 @@ if __name__ == "__main__":
                 action_noise_variance=config["mpc_data_collection"]["exploration_noise"])
             transition_model.train(True)
 
-        if ((iter + 1) % config["test_interval"]) == 0:
+        if ((traj + 1) % config["test_interval"]) == 0:
             # Test performance using MPC
             transition_model.eval()
             dyn = LearnedDynamics(args.env, transition_model, env.action_size, env.observation_size)
