@@ -180,7 +180,7 @@ def rollout_using_mpc(dyn, transition_model_mpc, env, mpc_config, memory=None, a
             memory.append(next_state, action, reward, done)
         avg_reward_per_episode += reward
         state = next_state.squeeze()
-    print(f"avg_reward_per_episode is {avg_reward_per_episode}")
+    # print(f"avg_reward_per_episode is {avg_reward_per_episode}")
     return avg_reward_per_episode
 
 def compute_loss(

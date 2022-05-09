@@ -42,7 +42,7 @@ memory:
 env:
   symbolic_env: False
   max_episode_length: 1000
-  action_repeat: 8 
+  action_repeat: 2
   bit_depth: 5
  
 
@@ -91,8 +91,6 @@ mpc_data_collection:
 test_interval: 5
 test_episodes: 10
 checkpoint_interval: 25
-updates_per_one_episode_collection: 100
-
 
 # magnitude of the random noise added to out
 # actions while collecting data.

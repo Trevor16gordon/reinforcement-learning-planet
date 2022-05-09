@@ -203,7 +203,7 @@ if __name__ == "__main__":
                         observation.to(device=device),
                     )
                     video_frames.append(
-                        (torch.cat([observation.squeeze(), transition_model.decode(belief, posterior_state).squeeze().cpu()], dim=2) + 0.5).numpy()
+                        (torch.cat([observation.squeeze(), transition_model.decode(posterior_state, belief).squeeze().cpu()], dim=2) + 0.5).numpy()
                     )
                     observation = next_observation
                     if done:
