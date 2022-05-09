@@ -154,7 +154,7 @@ class SSM(TransitionModel, nn.Module):
         prior_states[0] = prev_state
         posterior_states[0] = prev_state
 
-        non_terminal = non_terminals if non_terminals is not None else torch.ones(horizon) 
+        non_terminal = non_terminals if non_terminals is not None else torch.ones(horizon, device=self._device) 
 
         # predict a sequence off length action.size()
         for t in range(horizon-1):
@@ -167,7 +167,7 @@ class SSM(TransitionModel, nn.Module):
             prior_input = torch.cat([current_state, actions[t]], dim=1)
             prior_means[t + 1], prior_log_stddvs = torch.chunk(self._transition(prior_input), 2, dim = 1)
             prior_stddvs[t + 1] = self.softplus(prior_log_stddvs) + self._min_stddev
-            prior_states[t + 1] = prior_means[t+1] + torch.randn_like(prior_means[t+1]) * prior_stddvs[t + 1] 
+            prior_states[t + 1] = prior_means[t+1] + torch.randn_like(prior_means[t+1], device=self._device) * prior_stddvs[t + 1] 
 
             # if we have access to the observations, then we are in training mode, and we need to compute the posterior states.
             if observations is not None:
@@ -175,7 +175,7 @@ class SSM(TransitionModel, nn.Module):
                 posterior_input = torch.cat([observations[t], current_state, actions[t]], dim=1)
                 posterior_means[t + 1], posterior_log_stddvs = torch.chunk(self._posterior(posterior_input), 2, dim = 1)
                 posterior_stddvs[t + 1] = self.softplus(posterior_log_stddvs) + self._min_stddev
-                posterior_states[t + 1] = posterior_means[t+1] + torch.randn_like(posterior_means[t+1]) * posterior_stddvs[t + 1] 
+                posterior_states[t + 1] = posterior_means[t+1] + torch.randn_like(posterior_means[t+1], device=self._device) * posterior_stddvs[t + 1] 
 
             rewards[t + 1] = self._reward(prior_states[t+1] if observations is None else posterior_states[t+1])
         

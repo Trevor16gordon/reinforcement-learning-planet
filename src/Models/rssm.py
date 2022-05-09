@@ -174,7 +174,7 @@ class RSSM(TransitionModel, nn.Module):
         # initial belief will be the given prev_belief value
         beliefs[0] = prev_beliefs
 
-        non_terminal = non_terminals if non_terminals is not None else torch.ones(horizon) 
+        non_terminal = non_terminals if non_terminals is not None else torch.ones(horizon, device=self._device) 
 
         # predict a sequence off length action.size()
         for t in range(horizon-1):
@@ -183,7 +183,7 @@ class RSSM(TransitionModel, nn.Module):
             current_state = prior_states[t] if observations is None else posterior_states[t]
             current_state = current_state * non_terminal[t]
 
-            # We need to also zero out the RNN state if we are starting a new trajectory.
+            # We also need to zero out the RNN state if we are starting a new trajectory.
             prior_belief = beliefs[t] * non_terminal[t]
             
             # compute the next belief state of the RNN. 
@@ -194,7 +194,7 @@ class RSSM(TransitionModel, nn.Module):
             # compute prior distribution of next state
             prior_means[t + 1], prior_log_stddvs = torch.chunk(self._transition(beliefs[t + 1]), 2, dim = 1)
             prior_stddvs[t + 1] = self.softplus(prior_log_stddvs) + self._min_stddev
-            prior_states[t + 1] = prior_means[t+1] + torch.randn_like(prior_means[t+1]) * prior_stddvs[t + 1] 
+            prior_states[t + 1] = prior_means[t+1] + torch.randn_like(prior_means[t+1], device=self._device) * prior_stddvs[t + 1] 
 
             # if we have access to the observations, then we are in training mode, and we need to compute the posterior states.
             if observations is not None:
@@ -202,7 +202,7 @@ class RSSM(TransitionModel, nn.Module):
                 posterior_input = torch.cat([observations[t], beliefs[t+1]], dim=1)
                 posterior_means[t + 1], posterior_log_stddvs = torch.chunk(self._posterior(posterior_input), 2, dim = 1)
                 posterior_stddvs[t + 1] = self.softplus(posterior_log_stddvs) + self._min_stddev
-                posterior_states[t + 1] = posterior_means[t+1] + torch.randn_like(posterior_means[t+1]) * posterior_stddvs[t + 1] 
+                posterior_states[t + 1] = posterior_means[t+1] + torch.randn_like(posterior_means[t+1], device=self._device) * posterior_stddvs[t + 1] 
             
             # Use posterior states to predict rewards if the are available. Otherwise use the prior states.
             rew_state = prior_states[t+1] if observations is None else posterior_states[t+1]
