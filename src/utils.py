@@ -150,7 +150,7 @@ def rollout_using_mpc(dyn,
         if decode_to_video:
             video_frames.append((torch.cat([observation.squeeze(), transition_model.decode(state, belief).squeeze().cpu()], dim=2) + 0.5).numpy())
 
-        if max_frames is not None and if i > max_frames:
+        if max_frames is not None and i > max_frames:
             break
 
         avg_reward_per_episode += reward
@@ -300,7 +300,7 @@ def write_video(frames: np.array, title: str, path=''):
 
     # frames = np.multiply(np.stack(frames, axis=0).transpose(0, 2, 3, 1), 255).clip(0, 255).astype(np.uint8)[:, :, :, ::-1]  # VideoWrite expects H x W x C in BGR
     _, H, W, _ = frames.shape
-    writer = cv2.VideoWriter(os.path.join(path, '%s.mp4' % title), cv2.VideoWriter_fourcc(*'mp4v'), 30., (W, H), True)
+    writer = cv2.VideoWriter(os.path.join(path, f"{title}.mp4"), cv2.VideoWriter_fourcc(*"mp4v"), 30., (W, H), True)
    
     for frame in frames:
         writer.write(frame)

@@ -11,7 +11,7 @@ This model will
 from env import GymEnv, ControlSuiteEnv
 from data import ExperienceReplay
 from Models import SSM, MODEL_DICT
-from utils import gather_data, compute_loss, rollout_using_mpc, update_belief_and_act, write_video
+from utils import gather_data, compute_loss, rollout_using_mpc, write_video
 from dynamics import ModelPredictiveControl, LearnedDynamics
 from env import (
         GymEnv,
@@ -41,6 +41,8 @@ if __name__ == "__main__":
     parser.add_argument("--id", type=str, default="default", help="Experiment ID")
     parser.add_argument("--save-path", type=str, default="", help="Path for saving model check points.")
     parser.add_argument("--seed", type=int, default=1, metavar="S", help="Random seed")
+    parser.add_argument( "--load-model-path", type=str, default=None, help="If given, model will start from this path")
+    parser.add_argument( "--save-results-path", type=str, default="results", help="Path to output file")
     parser.add_argument( "--env", type=str, default="MountainCar-v0", choices=GYM_ENVS+CONTROL_SUITE_ENVS, help="Gym/Control Suite environment")
     parser.add_argument( "--model", type=str, default="ssm", choices=list(MODEL_DICT.keys()), help="Select the State Space Model to Train.",)
     parser.add_argument("--render", type=bool, default=False, help="Render environment")
@@ -59,7 +61,9 @@ if __name__ == "__main__":
 
     # set up directory for writing experiment results to.
     results_dir = os.path.join("results", args.id)
+    video_dir = os.path.join(results_dir, "videos"))
     os.makedirs(results_dir, exist_ok=True)
+    os.makedirs(video_dir, exist_ok=True)
 
     # Set the initial keys for numpy, torch, and the GPU.
     np.random.seed(args.seed)
@@ -156,6 +160,9 @@ if __name__ == "__main__":
 
     # populate the memory buffer with random action data.
     gather_data(env, memory, train_config["seed_episodes"])
+    
+    # dynamics wrapper for mpc.
+    dyn = LearnedDynamics(args.env, transition_model, env.action_size, env.observation_size)
 
     # Collect N episodes. Train the model at the end of each new episode. Intermitently run
     # 10 episodes of MPC to evaluate the models current performanc. 
@@ -204,7 +211,7 @@ if __name__ == "__main__":
                     decode_to_video=True,
                     max_frames=config["save_video_n_frames"]
                 )
-            write_video(video_frames, f"{args.model}_{args.env}_{traj}_episodes", os.path.join(results_dir, "videos"))
+            write_video(video_frames, f"{args.model}_{args.env}_{traj}_episodes", video_dir)
             transition_model.train()
 
 
@@ -228,7 +235,6 @@ if __name__ == "__main__":
         if config["mpc_data_collection"]["optimization_iters"] == 0:
             gather_data(env, memory, 1)
         else:
-            dyn = LearnedDynamics(args.env, transition_model, env.action_size, env.observation_size)
             with torch.no_grad():
                 train_reward, _ = rollout_using_mpc(
                     dyn,
@@ -245,7 +251,6 @@ if __name__ == "__main__":
         if (traj + 1) % config["test_interval"] == 0 or traj == 0:
             transition_model.eval()
             # Test performance using MPC
-            dyn = LearnedDynamics(args.env, transition_model, env.action_size, env.observation_size)
             test_episode_rewards = []
             with torch.no_grad():
                 for _ in range(config["test_episodes"]):
