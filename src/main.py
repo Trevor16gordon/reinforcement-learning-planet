@@ -134,9 +134,12 @@ if __name__ == "__main__":
         "rew_loss": [],
         "kl_loss":  [],
         "sum_loss": [],
-        "overshooting_kl_loss": [],
-        "overshooting_reward_loss": [],
     }
+    if train_config["overshooting_kl_beta"]:
+        losses["overshooting_kl_loss"] = []
+    if train_config["overshooting_reward_beta"]:
+        losses["overshooting_reward_loss"] = []
+
     # misc. metrics of interest for later plotting and visualization.
     metrics = {
         "steps": [],
@@ -216,27 +219,24 @@ if __name__ == "__main__":
             transition_model.train()
 
         # Print Info
-        if traj % 1 == 0:
-            total_time = int(time.time() - global_start_time)
-            total_secs, total_mins, total_hrs = total_time % 60, (total_time // 60) % 60, total_time // 3600
-            print(f"Total Run Time: {total_hrs:02}:{total_mins:02}:{total_secs:02}\n" \
-                  f"Trajectory {traj}: \n\tTotal Loss: {loss.item():.2f}" \
-                  f"\n\tObservation Loss: {obs_loss.item():.2f}"
-                  f"\n\tReward Loss: {rew_loss.item():.2f}"
-                  f"\n\tKL Loss: {kl_loss.item():.2f}"
-            )
-            if overshooting_kl_loss is not None:
-                print(f"\tOS KL Loss: {overshooting_kl_loss.item():.2f}")
-            if overshooting_reward_loss is not None:
-                print(f"\tOS Reward Loss: {overshooting_reward_loss.item():.2f}")
-            print()
+        total_time = int(time.time() - global_start_time)
+        total_secs, total_mins, total_hrs = total_time % 60, (total_time // 60) % 60, total_time // 3600
+        print(f"Total Run Time: {total_hrs:02}:{total_mins:02}:{total_secs:02}\n" \
+              f"Trajectory {traj}: \n\tTotal Loss: {loss.item():.2f}" \
+              f"\n\tObservation Loss: {obs_loss.item():.2f}"
+              f"\n\tReward Loss: {rew_loss.item():.2f}"
+              f"\n\tKL Loss: {kl_loss.item():.2f}"
+        )
+        if overshooting_kl_loss is not None:
+            print(f"\tOS KL Loss: {overshooting_kl_loss.item():.2f}")
+        if overshooting_reward_loss is not None:
+            print(f"\tOS Reward Loss: {overshooting_reward_loss.item():.2f}")
+        print()
 
+        # Data Collection using MPC
         if config["mpc_data_collection"]["optimization_iters"] == 0:
-            # naive data collection for now. Eventually integrate the MPC code to collect data
             gather_data(env, memory, 1)
-
         else:
-            # Data Collection using MPC
             dyn = LearnedDynamics(args.env, transition_model, env.action_size, env.observation_size)
             with torch.no_grad():
                 train_reward = rollout_using_mpc(
@@ -248,7 +248,7 @@ if __name__ == "__main__":
                     action_noise_variance=config["mpc_data_collection"]["exploration_noise"]
                 )
 
-        if ((traj + 1) % config["test_interval"]) == 0 or traj == 0:
+        if (traj + 1) % config["test_interval"] == 0 or traj == 0:
             transition_model.eval()
             # Test performance using MPC
             dyn = LearnedDynamics(args.env, transition_model, env.action_size, env.observation_size)
