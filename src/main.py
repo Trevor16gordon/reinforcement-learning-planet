@@ -208,7 +208,6 @@ if __name__ == "__main__":
             if overshooting_kl_loss is not None:
                 losses["overshooting_reward_loss"].append(overshooting_reward_loss.item())
 
-
         # generate a video of the original trajectory alongside the models reconstruction.
         if traj % 5 == 0:
             transition_model.eval()
@@ -302,14 +301,6 @@ if __name__ == "__main__":
             if overshooting_reward_loss is not None:
                 print(f"\tOS Reward Loss: {overshooting_reward_loss.item():.2f}")
             
-
-        metrics["steps"].append(train_config["train_iters"]*traj)
-        metrics["episodes"].append(traj)
-        metrics["train_rewards"].append(train_reward)
-        metrics["test_episodes"].append(num_test)
-        metrics["test_rewards"].append(test_episode_rewards)
-        metrics["test_reward_avg"].append(test_reward_avg)
-
         pd.DataFrame(losses).to_csv(os.path.join(results_dir, f"{args.model}_config_{args.config}_{args.id}_losses.csv"))
         pd.DataFrame(metrics).to_csv(os.path.join(results_dir, f"{args.model}_config_{args.config}_{args.id}_metrics.csv"))
 
