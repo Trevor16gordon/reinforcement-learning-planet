@@ -52,9 +52,9 @@ train:
   episodes: 1000
   seed_episodes: 5
   clip_grad_norm: 1_000
-  learning_rate: 0.0005
+  learning_rate: 0.001
   lr_schedule: 0
-  adam_epsilon: 0.00001
+  adam_epsilon: 0.0001
   batch_size: 50
   train_iters: 100
   seq_length: 50
