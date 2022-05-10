@@ -156,7 +156,6 @@ class ModelPredictiveControl():
 
         #means = np.zeros((1, self.control_horizon_simulate))
         #stds = 1*np.ones((1, self.control_horizon_simulate))
-
         means = torch.zeros(self.control_horizon_simulate, 1, device=device)
         stds = torch.ones(self.control_horizon_simulate, 1, device=device)
         means = means.unsqueeze(1)
@@ -174,7 +173,6 @@ class ModelPredictiveControl():
                 candidate_actions.clamp(self.min_action_clip, self.max_action_clip)
             resulting_next_states, resulting_rewards, resulting_dones = self.dynamics.advance_multiple_timesteps(state0_duplicates, candidate_actions)
             costs = self.cost_func(resulting_next_states, resulting_rewards, resulting_dones, goal)
-            
             costs_k, ids = torch.topk(costs, k, dim=1, largest=False)
             ids = ids.squeeze()
             top_action_seqs = torch.index_select(candidate_actions, 1, ids)
@@ -184,9 +182,8 @@ class ModelPredictiveControl():
             #stds = np.std(top_action_seqs, axis=1).reshape((1, -1))
             means = torch.mean(top_action_seqs, dim=1, keepdim=True)
             stds = torch.std(top_action_seqs, dim=1, keepdim=True)
-         
         #best_action_seq = candidate_actions[:, ids[0], :]
-        means = means.reshape(-1, 1)
+        means = means.squeeze(1)
         ret = means.cpu().detach().numpy()
         return ret
 
