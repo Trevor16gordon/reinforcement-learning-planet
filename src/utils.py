@@ -16,6 +16,7 @@ from dynamics import ModelPredictiveControl
 
 import numpy as np
 import torch
+from torch.nn.functional import pad
 import pdb
 
 def gather_data(
@@ -123,12 +124,12 @@ def gather_reconstructed_images_from_saved_model(path_to_model, rollout_len=10):
 
     return original_images, reconstructed_images
 
-def rollout_using_mpc(dyn, transition_model_mpc, env, mpc_config, memory=None, action_noise_variance=None):
+def rollout_using_mpc(dyn, transition_model, env, mpc_config, memory=None, action_noise_variance=None):
     """Rollout an episode using the MPC to choose the best actions
 
     Args:
         dyn (LearnedDynamics): 
-        transition_model_mpc (Models.Base): The trained transition model
+        transition_model (Models.Base): The trained transition model
         env (BaseEnv): The environment. It will be reset in this function
         mpc_config (dict): See mpc config in Configs.base.yaml
         max_episode_len (int): The max length of episode
@@ -136,38 +137,54 @@ def rollout_using_mpc(dyn, transition_model_mpc, env, mpc_config, memory=None, a
         action_noise_variance (int, optional): If given, uniform noise with this variance will be added to the action
     """
     mpc = ModelPredictiveControl(
-            dyn, 
-            min_action_clip=env.action_range[0],
-            max_action_clip=env.action_range[1])
+        dyn, 
+        min_action_clip=env.action_range[0],
+        max_action_clip=env.action_range[1]
+    )
     mpc.control_horizon_simulate = mpc_config["planning_horizon"]
-    state = env.reset().squeeze()
+    observation = env.reset()
+
+    state = torch.zeros(1, transition_model._state_size).to(transition_model._device)
+    belief = torch.zeros(1, transition_model._belief_size).to(transition_model._device)
+    action = torch.zeros(1, transition_model._act_size).to(transition_model._device)
+
     avg_reward_per_episode = 0
     done = False
     while not done:
-        current_model_state, current_model_belief = transition_model_mpc.observation_to_state_belief(state)
-        current_model_state_repeat = current_model_state.repeat(mpc_config["candidates"], 1)
-        current_model_belief_repeat = current_model_belief.repeat(mpc_config["candidates"], 1)  
+
+        belief, state = transition_model.observation_to_state_belief(
+            state,
+            action.unsqueeze(0),
+            belief,
+            observation
+        )
+
+        current_model_state_repeat = state.repeat(mpc_config["candidates"], 1)
+        current_model_belief_repeat = belief.repeat(mpc_config["candidates"], 1)  
         dyn.model_state = current_model_state_repeat
         dyn.model_belief = current_model_belief_repeat
 
         best_actions = mpc.compute_action_cross_entropy_method(
-            state, 
+            observation, 
             None, # No goal as using sum of rewards to select best action sequence
             num_iterations=mpc_config["optimization_iters"],
             j=mpc_config["candidates"], 
-            k=mpc_config["top_candidates"])
-        action = best_actions[0, :]
+            k=mpc_config["top_candidates"]
+        )
+        action = torch.Tensor(best_actions[0, :])
 
         if action_noise_variance is not None:
-            action += np.random.normal(loc=0, scale=action_noise_variance, size=action.shape)
-        next_state, reward, done, info  = env.step(action)
+            action += torch.normal(torch.zeros_like(action), std=action_noise_variance)
+        next_observation, reward, done, info  = env.step(action.numpy())
 
         if memory is not None:
-            memory.append(state, action, reward, done)
+            memory.append(observation, action.numpy(), reward, done)
             
         avg_reward_per_episode += reward
-        state = next_state.squeeze()
-    # print(f"avg_reward_per_episode is {avg_reward_per_episode}")
+        observation = next_observation
+        action = action.unsqueeze(0).to(transition_model._device)
+
+    env.close()
     return avg_reward_per_episode
 
 def compute_loss(
@@ -232,7 +249,69 @@ def compute_loss(
             kl_clip,
         )
 
-    return kl_loss, obs_loss, rew_loss, loss 
+    # Calculate the latent overshooting loss term.
+    overshooting_kl_loss = None
+    overshooting_reward_loss = None
+    if 0 < train_config["overshooting_kl_beta"] and model_type != 'rnn':
+        # We can avoid having to do T passes through the network (one pass for each horizon length,
+        # by first collecting all of the inputs needed to create the N-step predictions, and then passing
+        # these value into the network as a single batch.
+        # Ensure that the overshooting value does not exceed the horizon value
+        overshooting = train_config["overshooting_distance"]
+        horizon = train_config["seq_length"]
+        overshooting_input = []
+        for h in range(1, overshooting):
+            overshooting_dist = min(h + overshooting, horizon - 1) 
+            sequence_pad = (0, 0, 0, 0, 0, h - overshooting_dist + overshooting)
+
+            # we need replicate the model input, as well as the posteriors computed in the prior loss computation
+            # these posteriors still act as out learning targets in the latent overshooting problem.
+            overshooting_input.append((
+                # the previous latent state at step h
+                posterior_states[h - 1].detach(), 
+                # the subsequent sequence of actions
+                pad(actions[h:overshooting_dist], sequence_pad),
+                # The previous belief state at step h
+                beliefs[h - 1] if beliefs.nelement() != 0 else beliefs,
+                pad(nonterminals[h:overshooting_dist], sequence_pad), 
+                # A vector of ones of shape [overshoot - h, batch_size, state_size] which is then padded 
+                pad(torch.ones(overshooting_dist - h, posterior_states.size(1), posterior_states.size(2), device=transition_model._device), sequence_pad),
+                pad(posterior_means[h:overshooting_dist].detach(), sequence_pad), 
+                # Non-Zero stddev to prevent the KL-Loss from going to infinity
+                pad(posterior_stddvs[h:overshooting_dist].detach(), sequence_pad, value=1), 
+                pad(rewards[h:overshooting_dist], sequence_pad[2:]),
+            ))
+            # list order: 1) states, 2) actions, 3) beliefs, 4) nonterminals, 5) loss mask 6) means, 7) std deviation, 8) rewards
+        overshooting_input = tuple(zip(*overshooting_input))
+
+        beliefs, prior_states, prior_means, prior_std_devs, _, _, _, reward_preds = transition_model(
+            torch.cat(overshooting_input[0], dim=0), 
+            torch.cat(overshooting_input[1], dim=1), 
+            torch.cat(overshooting_input[2], dim=0), 
+            None, 
+            torch.cat(overshooting_input[3], dim=1)
+        )
+        seq_mask = torch.cat(overshooting_input[4], dim=1)
+        overshooting_kl_loss = transition_model.kl_loss( 
+            torch.cat(overshooting_input[5], dim=1), 
+            torch.cat(overshooting_input[6], dim=1),
+            prior_means, 
+            prior_std_devs,
+            kl_clip,
+            seq_mask
+        ) 
+        # Need to compensate for extra averaging over each overshooting/open loop sequence with the (horizon-1) / overshooting term      
+        overshooting_kl_loss = overshooting_kl_loss * train_config["overshooting_kl_beta"] * ((horizon - 1) / overshooting)
+        loss += overshooting_kl_loss
+
+        if 0 < train_config["overshooting_reward_beta"]:
+            overshooting_reward_loss = transition_model.reward_loss(
+                    reward_preds * seq_mask[:, :, 0],
+                torch.cat(overshooting_input[7], dim=1),
+            ) * train_config["overshooting_reward_beta"] * ((horizon - 1) / overshooting)
+            loss += overshooting_reward_loss
+
+    return kl_loss, obs_loss, rew_loss, overshooting_kl_loss, overshooting_reward_loss, loss 
 
 
 def write_video(frames: np.array, title: str, path=''):
@@ -254,10 +333,20 @@ def write_video(frames: np.array, title: str, path=''):
     writer.release()
 
 
-def update_belief_and_act(env, transition_model, belief, posterior_state, action, observation):
-    # Infer belief over current state q(s_t|o≤t,a<t) from the history
-    belief, _, _, _, posterior_state, _, _, _ = transition_model(posterior_state, action.unsqueeze(0), belief, transition_model.encode(observation).unsqueeze(dim=0))  # Action and observation need extra time dimension
-    belief, posterior_state = belief.squeeze(dim=0), posterior_state.squeeze(dim=0)
+def update_belief_and_act(
+    env, 
+    transition_model, 
+    posterior_state, 
+    belief, 
+    action, 
+    observation
+):
+    belief, posterior_state = transition_model.observation_to_state_belief(
+        posterior_state, 
+        action.unsqueeze(0), 
+        belief, 
+        observation
+    ) 
     action = -1 + 2*np.random.rand()
     action = -1 + 2*torch.rand(1, env.action_size, device=transition_model._device)
     next_observation, reward, done, _ = env.step(action[0].cpu())

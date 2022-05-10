@@ -212,6 +212,7 @@ class RNN(TransitionModel, nn.Module):
         posterior_beliefs: torch.Tensor,
         place_holder2: torch.empty,
         place_holder3: torch.Tensor,
+        mask: torch.Tensor = None
     ) -> torch.Tensor:
         """
         For the RNN based model we do not have a stochastic component, and there is 
@@ -224,8 +225,12 @@ class RNN(TransitionModel, nn.Module):
         max_divergence is ignored in the computation of this loss term
         """
         
+        mse_loss = self.mse(prior_beliefs, posterior_beliefs)
+        if mask is not None:
+            kl_loss = kl_loss * mask
+
         # take the sum over the belief dimensiont
-        mse_loss = self.mse(prior_beliefs, posterior_beliefs).sum(2)
+        mse_loss = mse_loss.sum(2)
 
         # return the mean loss accross the time and batch dimensions.
         return mse_loss.mean(dim=(0, 1))

@@ -9,7 +9,7 @@ authors:
 ssm:
   activation: "ELU"
   embed_size: 1024
-  hidden_dim: 200
+  hidden_dim: 400
   belief_size: 0
   state_size: 30
 
@@ -55,15 +55,16 @@ train:
   learning_rate: 0.001
   lr_schedule: 0
   adam_epsilon: 0.0001
-  batch_size: 64
+  batch_size: 50
   train_iters: 100
   seq_length: 50
 
   # weight parameters for KL-divergence and latent overshooting loss terms 
   kl_clip: 3.0
   global_kl_beta: 0.0
-  overshooting_kl_beta: 0
   overshooting_distance: 50
+  overshooting_kl_beta: 0
+  overshooting_reward_beta: 0
 
 
 # Model Predictive Control Hyperparameters
@@ -88,8 +89,8 @@ mpc_data_collection:
 # how frequently to test the model, the number of 
 # trajectories to test with, and how often to checkpoint 
 # our progress.
-test_interval: 5
-test_episodes: 3
+test_interval: 10
+test_episodes: 5
 checkpoint_interval: 25
 
 # magnitude of the random noise added to out

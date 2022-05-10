@@ -26,6 +26,8 @@ from torch import optim, nn
 from pathlib import Path
 import pandas as pd
 import numpy as np
+
+import pandas as pd
 import argparse
 import yaml
 import os
@@ -33,9 +35,6 @@ import tqdm
 import time
 import tqdm
 import pdb
-
-GYM_ENVS = ["InvertedPendulum-v2", "Pendulum-v1", "MountainCar-v0", "CartPole-v1"]
-CONTROL_SUITE_ENVS = ["cheetah-run", "ant-v2", "cartpole-swingup", "cartpole-balance"]
 
 
 if __name__ == "__main__":
@@ -84,7 +83,7 @@ if __name__ == "__main__":
         envClass = GymEnv
     elif args.env in CONTROL_SUITE_ENVS:
         envClass = ControlSuiteEnv
-        config["env"]["action_repeat"] = CONTROL_SUITE_ACTION_REPEATS[args.env.split('-')[0]] 
+        config["env"]["action_repeat"] = CONTROL_SUITE_ACTION_REPEATS[args.env.split("-")[0]] 
     else:
         # create comparable wrapper for control suite tasks
         raise NotImplementedError("No Control Suite Wrapper written yet.")
@@ -150,9 +149,12 @@ if __name__ == "__main__":
         "rew_loss": [],
         "kl_loss":  [],
         "sum_loss": [],
-        #"LOS_loss": [], #Note, if uncommented, need to append everything other losses are added
-        #"GP_loss":  []
     }
+    if train_config["overshooting_kl_beta"]:
+        losses["overshooting_kl_loss"] = []
+    if train_config["overshooting_reward_beta"]:
+        losses["overshooting_reward_loss"] = []
+
     # misc. metrics of interest for later plotting and visualization.
     metrics = {
         "steps": [],
@@ -178,9 +180,10 @@ if __name__ == "__main__":
     # 10 episodes of MPC to evaluate the models current performanc. 
     for traj in range(train_config["episodes"]):
 
-        # Training
+        # Set models to train mode
+        transition_model.train()
         for itr in tqdm.tqdm(range(train_config["train_iters"])):
-            kl_loss, obs_loss, rew_loss, loss = compute_loss(
+            kl_loss, obs_loss, rew_loss, overshooting_kl_loss, overshooting_reward_loss, loss = compute_loss(
                 transition_model,
                 memory,
                 kl_clip,
@@ -189,22 +192,26 @@ if __name__ == "__main__":
                 train_config,
                 args.model
             )    
-
-            losses["kl_loss"].append(kl_loss.item())
-            losses["obs_loss"].append(obs_loss.item())
-            losses["rew_loss"].append(rew_loss.item())
-            losses["sum_loss"].append(loss.item())
-
             # standard back prop step. Includes gradient clipping to help with training the RNN.
             optimiser.zero_grad()
             loss.backward()
             nn.utils.clip_grad_norm_(transition_model.parameters(), train_config["clip_grad_norm"], norm_type=2)
             optimiser.step()
 
-        # enerate a video of the original trajectory alongside the models reconstruction.
+            losses["kl_loss"].append(kl_loss.item())
+            losses["obs_loss"].append(obs_loss.item())
+            losses["rew_loss"].append(rew_loss.item())
+            losses["sum_loss"].append(loss.item())
+
+            if overshooting_kl_loss is not None:
+                losses["overshooting_kl_loss"].append(overshooting_kl_loss.item())
+            if overshooting_kl_loss is not None:
+                losses["overshooting_reward_loss"].append(overshooting_reward_loss.item())
+
+
+        # generate a video of the original trajectory alongside the models reconstruction.
         if traj % 5 == 0:
             transition_model.eval()
-
             with torch.no_grad():
                 observation, total_reward, video_frames = env.reset(), 0, []
                 belief = torch.zeros(1, model_config["belief_size"], device=device)
@@ -215,8 +222,8 @@ if __name__ == "__main__":
                     belief, posterior_state, action, next_observation, reward, done = update_belief_and_act(
                         env, 
                         transition_model, 
-                        belief,
                         posterior_state,
+                        belief,
                         action, 
                         observation.to(device=device),
                     )
@@ -225,48 +232,46 @@ if __name__ == "__main__":
                     )
                     observation = next_observation
                     if done:
-                        env.close()
                         break
             write_video(video_frames, f"{args.model}_{args.env}_{traj}_episodes", os.path.join(results_dir, "videos"))
             transition_model.train()
+            env.close()
 
         
 
         if config["mpc_data_collection"]["optimization_iters"] == 0:
-            # naive data collection for now. Eventually integrate the MPC code to collect data
             train_reward = gather_data(env, memory, 1)
         else:
-            # Data Collection using MPC
-            transition_model.eval()
             dyn = LearnedDynamics(args.env, transition_model, env.action_size, env.observation_size)
-            train_reward = rollout_using_mpc(
-                dyn,
-                transition_model,
-                env,
-                config["mpc_data_collection"],
-                memory=memory,
-                action_noise_variance=config["mpc_data_collection"]["exploration_noise"])
-            transition_model.train()
-
-        if ((traj + 1) % config["test_interval"]) == 0:
-            # Test performance using MPC
-            transition_model.eval()
-            dyn = LearnedDynamics(args.env, transition_model, env.action_size, env.observation_size)
-            test_episode_rewards = []
-            for _ in range(config["test_episodes"]):
-                test_episode_reward = rollout_using_mpc(
+            with torch.no_grad():
+                train_reward = rollout_using_mpc(
                     dyn,
                     transition_model,
                     env,
-                    config["mpc"],
-                    memory=None,
-                    action_noise_variance=None
+                    config["mpc_data_collection"],
+                    memory=memory,
+                    action_noise_variance=config["mpc_data_collection"]["exploration_noise"]
                 )
-                test_episode_rewards.append(test_episode_reward)
-                total_test_reward += test_episode_reward
-                num_test += 1
+
+        if (traj + 1) % config["test_interval"] == 0 or traj == 0:
+            transition_model.eval()
+            # Test performance using MPC
+            dyn = LearnedDynamics(args.env, transition_model, env.action_size, env.observation_size)
+            test_episode_rewards = []
+            with torch.no_grad():
+                for _ in range(config["test_episodes"]):
+                    test_episode_reward = rollout_using_mpc(
+                        dyn,
+                        transition_model,
+                        env,
+                        config["mpc"],
+                        memory=None,
+                        action_noise_variance=None
+                    )
+                    test_episode_rewards.append(test_episode_reward)
             test_reward_avg = sum(test_episode_rewards)/len(test_episode_rewards)
-            avg_test_reward_so_far = total_test_reward/num_test
+            print(f"Test episode completed. Average test reward: {test_reward_avg}")
+            num_test += 1
             transition_model.train()
 
         metrics["steps"].append(train_config["train_iters"]*traj)
@@ -292,17 +297,33 @@ if __name__ == "__main__":
                   f"\n\tTest Episode Reward Avg {test_reward_avg:.2f}"
                   f"\n\tCumulative Test Reward Avg {total_test_reward/num_test:.2f}"
                   )
+            if overshooting_kl_loss is not None:
+                print(f"\tOS KL Loss: {overshooting_kl_loss.item():.2f}")
+            if overshooting_reward_loss is not None:
+                print(f"\tOS Reward Loss: {overshooting_reward_loss.item():.2f}")
             
+
+        metrics["steps"].append(train_config["train_iters"]*traj)
+        metrics["episodes"].append(traj)
+        metrics["train_rewards"].append(train_reward)
+        metrics["test_episodes"].append(num_test)
+        metrics["test_rewards"].append(test_episode_rewards)
+        metrics["test_reward_avg"].append(test_reward_avg)
+
+        pd.DataFrame(losses).to_csv(os.path.join(results_dir, f"{args.model}_config_{args.config}_{args.id}_losses.csv"))
+        pd.DataFrame(metrics).to_csv(os.path.join(results_dir, f"{args.model}_config_{args.config}_{args.id}_metrics.csv"))
+
+
         if (traj + 1) % config["checkpoint_interval"] == 0:
             model_save_info = {
                 "model_state_dict" : transition_model.state_dict(),
+                "optim_state_dict": optim.state_dict(),
                 "env_name": args.env,
                 "model_config": model_config,
                 "model": args.model,
                 "env_config": config["env"],
                 "seed": args.seed,
                 }
-            torch.save(model_save_info, os.path.join(results_dir, f"transition_model_{traj}.pt"))
-
-        pd.DataFrame(losses).to_csv(os.path.join(results_dir, f"losses.csv"))
-        pd.DataFrame(metrics).to_csv(os.path.join(results_dir, f"metrics.csv"))
+            torch.save(model_save_info, os.path.join(results_dir, f"{args.model}_config_{args.config}_{args.id}_{traj}.pt"))
+        
+            

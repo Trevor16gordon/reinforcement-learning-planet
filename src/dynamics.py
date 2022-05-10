@@ -114,7 +114,7 @@ class LearnedDynamics():
         """
         state_0 = torch.from_numpy(state_0).float()
         #actions_multiple_timesteps = torch.from_numpy(actions_multiple_timesteps).float()
-        (_,_,_,_,_,_,_,generated_rewards) = self.transition_model(self.model_state, actions_multiple_timesteps, self.model_belief)
+        _, _, _, _, _, _, _, generated_rewards = self.transition_model(self.model_state, actions_multiple_timesteps, self.model_belief)
         #generated_rewards = generated_rewards.cpu().detach().numpy()
         resulting_dones = None
         return None, generated_rewards, resulting_dones
@@ -145,10 +145,11 @@ class ModelPredictiveControl():
     def compute_action_cross_entropy_method(self, state, goal, num_iterations=3, j=50, k=10):
 
         env_action_dim = self.dynamics.env_action_dim
-        env_state_dim = self.dynamics.env_state_dim
         num_timesteps = self.control_horizon_simulate
+
         # Create J candidate sequences
         device = self.dynamics.transition_model._device
+
         # Ok I shouldn't do this reshaping here
         # Need to deal with flatenned state dimension as well as unflattened like images (3, 64, 64)
         state0_duplicates = np.repeat(np.expand_dims(state, 0), j, axis=0)
@@ -174,12 +175,6 @@ class ModelPredictiveControl():
             resulting_next_states, resulting_rewards, resulting_dones = self.dynamics.advance_multiple_timesteps(state0_duplicates, candidate_actions)
             costs = self.cost_func(resulting_next_states, resulting_rewards, resulting_dones, goal)
             
-            # Setup to MINIMIZE the cost. 
-            # Sort into top k cost action sequences
-            #idx = np.argpartition(costs, k)[:k]
-            #ids = idx[np.argsort(costs[idx])]
-            #costs_k = costs[ids]    
-
             costs_k, ids = torch.topk(costs, k, dim=1, largest=False)
             ids = ids.squeeze()
             top_action_seqs = torch.index_select(candidate_actions, 1, ids)

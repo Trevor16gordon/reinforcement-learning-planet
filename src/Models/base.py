@@ -65,6 +65,7 @@ class TransitionModel(ABC):
         posterior_means: torch.Tensor,
         posterior_stddev: torch.Tensor,
         max_divergence: torch.Tensor,
+        mask: torch.Tensor = None
     ) -> torch.Tensor:
         """
         Compute the KL-Divergence Term in the model loss function. 
@@ -80,6 +81,9 @@ class TransitionModel(ABC):
         prior_dist = Normal(prior_means, prior_stddev)
         posterior_dist = Normal(posterior_means, posterior_stddev)
         kl_loss = kl_divergence(prior_dist, posterior_dist)
+
+        if mask is not None:
+            kl_loss = kl_loss * mask
 
         # sum accross the state dimension, and clip the loss.
         kl_loss = torch.max(kl_loss.sum(dim=2), max_divergence)
@@ -128,10 +132,11 @@ class TransitionModel(ABC):
     def reward_loss(
         self, 
         reward_pred: torch.Tensor, 
-        reward: torch.Tensor
+        reward: torch.Tensor,
     ) -> torch.Tensor:
         """Compute the reward prediction loss."""
-        return self.mse(reward_pred, reward).mean(dim=(0, 1))
+        reward_mse = self.mse(reward_pred, reward)
+        return reward_mse.mean(dim=(0, 1))
 
     def encode(self, observations: torch.Tensor) -> torch.Tensor:
         """
@@ -161,42 +166,28 @@ class TransitionModel(ABC):
         return embeddings
 
     def observation_to_state_belief(self,
-            obs_0: Optional[torch.Tensor]):
-        """Helper function to encode first observation
+            prev_state,
+            prev_action,
+            prev_belief,
+            observation: torch.Tensor
+        ):
+        """
+        Helper function to encode first observation
 
         Args:
             obs_0 (torch.Tensor(1, *self._obs_size)): The first observation
         """
-        obs_0 = obs_0.to(self._device)
-        if not len(obs_0.shape) > 3:
-            obs_0 = obs_0.unsqueeze(0)
-        assert obs_0.shape[1:] == self._obs_dim
-        
-        batch_size = 1
-        init_belief = torch.zeros(batch_size, self._belief_size).to(self._device)
-        init_state = torch.zeros(batch_size, self._state_size).to(self._device)
-        init_action = torch.zeros(1, batch_size, self._act_size).to(self._device)
-        encoded_observation_0 = self.encode(obs_0)
-        if not len(encoded_observation_0.shape) >= 3:
-            encoded_observation_0 = encoded_observation_0.unsqueeze(0)
-        (
-            t0_beliefs,
-            _,#t0_prior_states,
-            _,#t0_prior_means,
-            _,#t0_prior_stddvs,
-            t0_posterior_state,
-            _,#t0_posterior_means,
-            _,#t0_posterior_stddvs,
-            _,#t0_reward_preds,
-        ) = self.forward(
-            init_state,
-            init_action,
-            init_belief,
-            encoded_observation_0
+
+        observation = observation.to(self._device)
+        belief, _, _, _, posterior_state, _, _, _ = self.forward(
+            prev_state,
+            prev_action,
+            prev_belief,
+            self.encode(observation).unsqueeze(dim=0)
         )
-        t0_prev_state = t0_posterior_state.squeeze(0)
-        t0_prev_belief = t0_beliefs.squeeze(0)
-        return t0_prev_state, t0_prev_belief
+        belief = belief.squeeze(dim=0)
+        posterior_state = posterior_state.squeeze(dim=0)
+        return belief, posterior_state
 
     @abstractmethod
     def decode(self, posterior: torch.Tensor, belief: torch.Tensor):
