@@ -231,9 +231,9 @@ if __name__ == "__main__":
                   f"\n\tKL Loss: {kl_loss.item():.2f}\n"
             )
             if overshooting_kl_loss is not None:
-                print(f"\n\tOS KL Loss: {overshooting_kl_loss.item:.2f}")
+                print(f"\n\tOS KL Loss: {overshooting_kl_loss.item():.2f}")
             if overshooting_reward_loss is not None:
-                print(f"\n\tOS Reward Loss: {overshooting_reward_loss.item:.2f}")
+                print(f"\n\tOS Reward Loss: {overshooting_reward_loss().item:.2f}")
 
         if config["mpc_data_collection"]["optimization_iters"] == 0:
             # naive data collection for now. Eventually integrate the MPC code to collect data
