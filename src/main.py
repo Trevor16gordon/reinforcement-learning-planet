@@ -211,32 +211,21 @@ if __name__ == "__main__":
         # generate a video of the original trajectory alongside the models reconstruction.
         if traj % 5 == 0:
             transition_model.eval()
+            dyn = LearnedDynamics(args.env, transition_model, env.action_size, env.observation_size)
             with torch.no_grad():
-                observation, total_reward, video_frames = env.reset(), 0, []
-                belief = torch.zeros(1, model_config["belief_size"], device=device)
-                posterior_state = torch.zeros(1, model_config["state_size"], device=device)
-                action = -1 + 2*torch.rand(1, env.action_size, device=device)
-
-                for _ in range(500):
-                    belief, posterior_state, action, next_observation, reward, done = update_belief_and_act(
-                        env, 
-                        transition_model, 
-                        posterior_state,
-                        belief,
-                        action, 
-                        observation.to(device=device),
+                _, video_frames = rollout_using_mpc(
+                        dyn,
+                        transition_model,
+                        env,
+                        config["mpc"],
+                        memory=None,
+                        action_noise_variance=None,
+                        decode_to_video=True,
+                        max_frames=500
                     )
-                    video_frames.append(
-                        (torch.cat([observation.squeeze(), transition_model.decode(posterior_state, belief).squeeze().cpu()], dim=2) + 0.5).numpy()
-                    )
-                    observation = next_observation
-                    if done:
-                        break
             write_video(video_frames, f"{args.model}_{args.env}_{traj}_episodes", os.path.join(results_dir, "videos"))
             transition_model.train()
             env.close()
-
-        
 
         if config["mpc_data_collection"]["optimization_iters"] == 0:
             train_reward = gather_data(env, memory, 1)
