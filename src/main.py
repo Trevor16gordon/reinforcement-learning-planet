@@ -263,7 +263,7 @@ if __name__ == "__main__":
                         memory=None,
                         action_noise_variance=None
                     )
-                test_episode_rewards.append(test_episode_reward)
+                    test_episode_rewards.append(test_episode_reward)
             test_reward_avg = sum(test_episode_rewards)/len(test_episode_rewards)
             print(f"Test episode completed. Average test reward: {test_reward_avg}")
             num_test += 1
