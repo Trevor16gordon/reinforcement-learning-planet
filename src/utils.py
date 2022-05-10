@@ -129,7 +129,7 @@ def rollout_using_mpc(dyn,
         env, 
         mpc_config, 
         memory=None, 
-        action_noise_variance=None
+        action_noise_variance=None,
         decode_to_video=False, 
         max_frames=None,
         ):

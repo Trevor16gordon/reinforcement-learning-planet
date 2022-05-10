@@ -209,7 +209,7 @@ if __name__ == "__main__":
                 losses["overshooting_reward_loss"].append(overshooting_reward_loss.item())
 
         # generate a video of the original trajectory alongside the models reconstruction.
-        if traj % 5 == 0:
+        if ((traj + 1) % config["save_video_interval"]) == 0:
             transition_model.eval()
             dyn = LearnedDynamics(args.env, transition_model, env.action_size, env.observation_size)
             with torch.no_grad():
@@ -221,7 +221,7 @@ if __name__ == "__main__":
                         memory=None,
                         action_noise_variance=None,
                         decode_to_video=True,
-                        max_frames=500
+                        max_frames=config["save_video_n_frames"]
                     )
             write_video(video_frames, f"{args.model}_{args.env}_{traj}_episodes", os.path.join(results_dir, "videos"))
             transition_model.train()
@@ -299,7 +299,7 @@ if __name__ == "__main__":
         if (traj + 1) % config["checkpoint_interval"] == 0:
             model_save_info = {
                 "model_state_dict" : transition_model.state_dict(),
-                "optim_state_dict": optim.state_dict(),
+                "optim_state_dict": optimiser.state_dict(),
                 "env_name": args.env,
                 "model_config": model_config,
                 "model": args.model,
