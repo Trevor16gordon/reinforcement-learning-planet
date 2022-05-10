@@ -66,9 +66,10 @@ train:
 
   # weight parameters for KL-divergence and latent overshooting loss terms 
   kl_clip: 3.0
-  global_kl_beta: 1.5
-  overshooting_kl_beta: 0
+  global_kl_beta: 1
   overshooting_distance: 50
+  overshooting_kl_beta: 1
+  overshooting_reward_beta: 1
 
 
 # Model Predictive Control Hyperparameters

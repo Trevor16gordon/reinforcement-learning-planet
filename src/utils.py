@@ -16,6 +16,7 @@ from dynamics import ModelPredictiveControl
 
 import numpy as np
 import torch
+from torch.nn.functional import pad
 import pdb
 
 def gather_data(
@@ -248,7 +249,70 @@ def compute_loss(
             kl_clip,
         )
 
-    return kl_loss, obs_loss, rew_loss, loss 
+    # Calculate the latent overshooting loss term.
+    overshooting_kl_loss = 0
+    overshooting_reward_loss = 0
+    if 0 < train_config["overshooting_kl_beta"] and model_type != 'rnn':
+        # We can avoid having to do T passes through the network (one pass for each horizon length,
+        # by first collecting all of the inputs needed to create the N-step predictions, and then passing
+        # these value into the network as a single batch.
+        # Ensure that the overshooting value does not exceed the horizon value
+        overshooting = train_config["overshooting_distance"]
+        horizon = train_config["seq_length"]
+        overshoot_input = []
+        for h in range(1, overshooting):
+            overshooting_dist = min(h + overshooting, horizon - 1) 
+            sequence_pad = (0, 0, 0, 0, 0, h - overshooting_dist + overshooting)
+
+            # we need replicate the model input, as well as the posteriors computed in the prior loss computation
+            # these posteriors still act as out learning targets in the latent overshooting problem.
+            overshooting_input.append((
+                # the previous latent state at step h
+                posterior_states[h - 1].detach(), 
+                # the subsequent sequence of actions
+                pad(actions[h:overshooting_dist], sequence_pad),
+                # The previous belief state at step h
+                beliefs[h - 1] if beliefs.nelement() != 0 else beliefs,
+                pad(nonterminals[h:overshooting_dist], sequence_pad), 
+                # A vector of ones of shape [overshoot - h, batch_size, state_size] which is then padded 
+                pad(torch.ones(overshooting_dist - h, posterior_states.size(1), posterior_states.size(2), device=transition_model._device), sequence_pad),
+                pad(posterior_means[h:overshooting_dist].detach(), sequence_pad), 
+                # Non-Zero stddev to prevent the KL-Loss from going to infinity
+                pad(posterior_stddvs[h:overshooting_dist].detach(), sequence_pad, value=1), 
+                pad(rewards[h:overshooting_dist], sequence_pad[2:]),
+            ))
+            # list order: 1) states, 2) actions, 3) beliefs, 4) nonterminals, 5) loss mask 6) means, 7) std deviation, 8) rewards
+        overshooting_input = tuple(zip(*overshooting_input))
+
+        beliefs, prior_states, prior_means, prior_std_devs = transition_model(
+            torch.cat(overshooting_input[0], dim=0), 
+            torch.cat(overshooting_input[1], dim=1), 
+            torch.cat(overshooting_input[2], dim=0), 
+            None, 
+            torch.cat(overshooting_input[3], dim=1)
+        )
+        seq_mask = torch.cat(overshooting_input[4], dim=1)
+        overshooting_kl_loss = transition_model.kl_loss( 
+            torch.cat(overshooting_input[5], dim=1), 
+            torch.cat(overshooting_input[6], dim=1),
+            prior_means, 
+            prior_std_devs,
+            kl_clip,
+            seq_mask
+        ) 
+        # Need to compensate for extra averaging over each overshooting/open loop sequence with the (horizon-1) / overshooting term      
+        overshooting_kl_loss = overshooting_kl_loss * args.overshooting_kl_beta * ((horizon - 1) / overshooting)
+        loss += overshooting_kl_loss
+
+        if 0 < train_config["overshooting_reward_beta"]:
+            overshooting_reward_loss = transition_model.reward_loss(
+                reward_preds, 
+                torch.cat(overshooting_input[7], dim=1),
+                seq_mask
+            ) * args.overshooting_reward_beta * ((horizon - 1) / overshooting)
+            loss += overshooting_reward_loss
+
+    return kl_loss, obs_loss, rew_loss, overshooting_kl_loss, overshooting_reward_loss, loss 
 
 
 def write_video(frames: np.array, title: str, path=''):

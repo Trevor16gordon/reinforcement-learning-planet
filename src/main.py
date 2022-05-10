@@ -136,8 +136,8 @@ if __name__ == "__main__":
         "rew_loss": [],
         "kl_loss":  [],
         "sum_loss": [],
-        "LOS_loss": [],
-        "GP_loss":  []
+        "overshooting_kl_loss": [],
+        "overshooting_reward_loss": [],
     }
     # misc. metrics of interest for later plotting and visualization.
     metrics = {
@@ -163,7 +163,7 @@ if __name__ == "__main__":
         # Set models to train mode
         transition_model.train()
         for itr in tqdm.tqdm(range(train_config["train_iters"])):
-            kl_loss, obs_loss, rew_loss, loss = compute_loss(
+            kl_loss, obs_loss, rew_loss, overshooting_kl_loss, overshooting_reward_loss, loss = compute_loss(
                 transition_model,
                 memory,
                 kl_clip,
@@ -181,7 +181,12 @@ if __name__ == "__main__":
             losses["kl_loss"].append(kl_loss.item())
             losses["obs_loss"].append(obs_loss.item())
             losses["rew_loss"].append(rew_loss.item())
+            losses["overshooting_kl_loss"].append(kl_loss.item())
+            losses["overshooting_reward_loss"].append(kl_loss.item())
             losses["sum_loss"].append(loss.item())
+
+            with open(os.path.join("results", f"{args.model}_config_{args.config}_{args.id}_{traj}.pkl"), "wb") as file:
+                pickle.dump(losses, file)
 
         # generate a video of the original trajectory alongside the models reconstruction.
         if traj % 5 == 0:
@@ -260,10 +265,11 @@ if __name__ == "__main__":
         if (traj + 1) % config["checkpoint_interval"] == 0:
             model_save_info = {
                 "model_state_dict" : transition_model.state_dict(),
+                "optim_state_dict": optim.state_dict(),
                 "env_name": args.env,
                 "model_config": model_config,
                 "model": args.model,
                 "env_config": config["env"],
                 "seed": args.seed,
-                }
-            torch.save(model_save_info, f"transition_model_{traj}.pt")
+            }
+            torch.save(model_save_info, os.path.join("results", f"{args.model}_config_{args.config}_{args.id}_{traj}.pt"))

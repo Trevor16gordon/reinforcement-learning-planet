@@ -65,6 +65,7 @@ class TransitionModel(ABC):
         posterior_means: torch.Tensor,
         posterior_stddev: torch.Tensor,
         max_divergence: torch.Tensor,
+        mask: torch.Tensor = None
     ) -> torch.Tensor:
         """
         Compute the KL-Divergence Term in the model loss function. 
@@ -80,6 +81,9 @@ class TransitionModel(ABC):
         prior_dist = Normal(prior_means, prior_stddev)
         posterior_dist = Normal(posterior_means, posterior_stddev)
         kl_loss = kl_divergence(prior_dist, posterior_dist)
+
+        if mask is not None:
+            kl_loss = kl_loss * mask
 
         # sum accross the state dimension, and clip the loss.
         kl_loss = torch.max(kl_loss.sum(dim=2), max_divergence)
@@ -128,10 +132,14 @@ class TransitionModel(ABC):
     def reward_loss(
         self, 
         reward_pred: torch.Tensor, 
-        reward: torch.Tensor
+        reward: torch.Tensor,
+        mask: torch.Tensor = None
     ) -> torch.Tensor:
         """Compute the reward prediction loss."""
-        return self.mse(reward_pred, reward).mean(dim=(0, 1))
+        reward_mse = self.mse(reward_pred, reward)
+        if mask is not None:
+            reward_mse = reward_mse*mask
+        return reward_mse.mean(dim=(0, 1))
 
     def encode(self, observations: torch.Tensor) -> torch.Tensor:
         """
