@@ -46,7 +46,7 @@ memory:
 # environments hyperparameters
 env:
   symbolic_env: False
-  max_episode_length: 1000
+  max_episode_length: 200
   action_repeat: 8 
   bit_depth: 5
  
@@ -97,4 +97,5 @@ mpc_data_collection:
 test_interval: 10
 test_episodes: 5
 checkpoint_interval: 25
-updates_per_one_episode_collection: 100
+save_video_interval: 5
+save_video_n_frames: 500

@@ -41,7 +41,7 @@ memory:
 # environments hyperparameters
 env:
   symbolic_env: False
-  max_episode_length: 1000
+  max_episode_length: 200
   action_repeat: 2
   bit_depth: 5
  
