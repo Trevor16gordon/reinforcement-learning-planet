@@ -133,12 +133,9 @@ class TransitionModel(ABC):
         self, 
         reward_pred: torch.Tensor, 
         reward: torch.Tensor,
-        mask: torch.Tensor = None
     ) -> torch.Tensor:
         """Compute the reward prediction loss."""
         reward_mse = self.mse(reward_pred, reward)
-        if mask is not None:
-            reward_mse = reward_mse*mask
         return reward_mse.mean(dim=(0, 1))
 
     def encode(self, observations: torch.Tensor) -> torch.Tensor:

@@ -23,8 +23,9 @@ from env import (
 
 import torch
 from torch import optim, nn
-
 import numpy as np
+
+import pickle as pkl
 import argparse
 import yaml
 import os
@@ -181,12 +182,15 @@ if __name__ == "__main__":
             losses["kl_loss"].append(kl_loss.item())
             losses["obs_loss"].append(obs_loss.item())
             losses["rew_loss"].append(rew_loss.item())
-            losses["overshooting_kl_loss"].append(kl_loss.item())
-            losses["overshooting_reward_loss"].append(kl_loss.item())
             losses["sum_loss"].append(loss.item())
 
-            with open(os.path.join("results", f"{args.model}_config_{args.config}_{args.id}_{traj}.pkl"), "wb") as file:
-                pickle.dump(losses, file)
+            if overshooting_kl_loss is not None:
+                losses["overshooting_kl_loss"].append(overshooting_kl_loss.item())
+            if overshooting_kl_loss is not None:
+                losses["overshooting_reward_loss"].append(overshooting_reward_loss.item())
+
+            with open(os.path.join("results", f"{args.model}_config_{args.config}_{args.id}.pkl"), "wb") as file:
+                pkl.dump(losses, file)
 
         # generate a video of the original trajectory alongside the models reconstruction.
         if traj % 5 == 0:
@@ -222,10 +226,14 @@ if __name__ == "__main__":
             total_secs, total_mins, total_hrs = total_time % 60, (total_time // 60) % 60, total_time // 3600
             print(f"Total Run Time: {total_hrs:02}:{total_mins:02}:{total_secs:02}\n" \
                   f"Trajectory {traj}: \n\tTotal Loss: {loss.item():.2f}" \
-                  f"\n\tObservation Loss {obs_loss.item():.2f}"
-                  f"\n\tReward Loss {rew_loss.item():.2f}"
-                  f"\n\tKL Loss {kl_loss.item():.2f}\n"
+                  f"\n\tObservation Loss: {obs_loss.item():.2f}"
+                  f"\n\tReward Loss: {rew_loss.item():.2f}"
+                  f"\n\tKL Loss: {kl_loss.item():.2f}\n"
             )
+            if overshooting_kl_loss is not None:
+                print(f"\n\tOS KL Loss: {overshooting_kl_loss.item:.2f}")
+            if overshooting_reward_loss is not None:
+                print(f"\n\tOS Reward Loss: {overshooting_reward_loss.item:.2f}")
 
         if config["mpc_data_collection"]["optimization_iters"] == 0:
             # naive data collection for now. Eventually integrate the MPC code to collect data

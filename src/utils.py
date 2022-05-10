@@ -250,8 +250,8 @@ def compute_loss(
         )
 
     # Calculate the latent overshooting loss term.
-    overshooting_kl_loss = 0
-    overshooting_reward_loss = 0
+    overshooting_kl_loss = None
+    overshooting_reward_loss = None
     if 0 < train_config["overshooting_kl_beta"] and model_type != 'rnn':
         # We can avoid having to do T passes through the network (one pass for each horizon length,
         # by first collecting all of the inputs needed to create the N-step predictions, and then passing
@@ -301,15 +301,14 @@ def compute_loss(
             seq_mask
         ) 
         # Need to compensate for extra averaging over each overshooting/open loop sequence with the (horizon-1) / overshooting term      
-        overshooting_kl_loss = overshooting_kl_loss * args.overshooting_kl_beta * ((horizon - 1) / overshooting)
+        overshooting_kl_loss = overshooting_kl_loss * train_config["overshooting_kl_beta"] * ((horizon - 1) / overshooting)
         loss += overshooting_kl_loss
 
         if 0 < train_config["overshooting_reward_beta"]:
             overshooting_reward_loss = transition_model.reward_loss(
-                reward_preds, 
+                    reward_preds * seq_mask[:, :, 0],
                 torch.cat(overshooting_input[7], dim=1),
-                seq_mask
-            ) * args.overshooting_reward_beta * ((horizon - 1) / overshooting)
+            ) * train_config["overshooting_reward_beta"] * ((horizon - 1) / overshooting)
             loss += overshooting_reward_loss
 
     return kl_loss, obs_loss, rew_loss, overshooting_kl_loss, overshooting_reward_loss, loss 
