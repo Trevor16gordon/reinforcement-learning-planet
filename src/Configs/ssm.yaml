@@ -94,7 +94,7 @@ mpc_data_collection:
 # how frequently to test the model, the number of 
 # trajectories to test with, and how often to checkpoint 
 # our progress.
-test_interval: 5
-test_episodes: 10
+test_interval: 10
+test_episodes: 5
 checkpoint_interval: 25
 updates_per_one_episode_collection: 100
