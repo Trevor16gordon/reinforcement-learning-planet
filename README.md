@@ -9,5 +9,28 @@ PlaNet uses a latent dynamics model, which contains both deterministic and stoch
 PlaNet is also incredibly data-efficient, and outperforms model-free methods final performance, with on average 200×  fewer environment interactions and similar computation time.
 
 
+# Key Results
+
+Below is an example of the reproduced RSSM model after 70 episodes of training playing cartpole-swing up from the Deepmind Control suite. The video on the left is the real output and the video on the right is the agents world after VAE decoding.
+
+https://user-images.githubusercontent.com/12552254/167675026-55409b2a-9877-4189-a404-6b94f708a2ca.mp4
+
+
+# Installation
+- Follow installation instructions for [Deepmind Control environments]()
+
+# Repo Structure
+- **src/Config/**: All config information is stored here including 
+    - The structure of the pytorch models
+    - Hyperparameters for training
+    - Hyperparameters for checkpointing / saving / rollouts
+- **src/Models/base.py**: The base transition model for predicting forward in the latent spce
+- **src/Models/ssm.py**: The purely stochastic transition model
+- **src/Models/rssm.py**: The complete recurrent stochastic transition model
+- **src/Models/rnn.py**: The complete recurrent stochastic transition model
+- **src/Models/autoencode.py**: The VAE model
+- **src/env.py**: Wrappers for gym environments used for testing. Wrappers to use dm_control and openai gym mujoco environments with the same interface
+- **src/utils.py**: Utility funcitons
+- **src/visualiztion.py**: Files for plotting.
 
 
