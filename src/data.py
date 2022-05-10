@@ -115,6 +115,7 @@ class ExperienceReplay():
         while not valid_idx:
             idx = np.random.randint(0, self.size if self.full else self.idx - L)
             idxs = np.arange(idx, idx + L) % self.size
+
             # Make sure data does not cross the memory index
             valid_idx = not self.idx in idxs[1:]
 

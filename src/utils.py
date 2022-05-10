@@ -123,12 +123,12 @@ def gather_reconstructed_images_from_saved_model(path_to_model, rollout_len=10):
 
     return original_images, reconstructed_images
 
-def rollout_using_mpc(dyn, transition_model_mpc, env, mpc_config, memory=None, action_noise_variance=None):
+def rollout_using_mpc(dyn, transition_model, env, mpc_config, memory=None, action_noise_variance=None):
     """Rollout an episode using the MPC to choose the best actions
 
     Args:
         dyn (LearnedDynamics): 
-        transition_model_mpc (Models.Base): The trained transition model
+        transition_model (Models.Base): The trained transition model
         env (BaseEnv): The environment. It will be reset in this function
         mpc_config (dict): See mpc config in Configs.base.yaml
         max_episode_len (int): The max length of episode
@@ -136,38 +136,54 @@ def rollout_using_mpc(dyn, transition_model_mpc, env, mpc_config, memory=None, a
         action_noise_variance (int, optional): If given, uniform noise with this variance will be added to the action
     """
     mpc = ModelPredictiveControl(
-            dyn, 
-            min_action_clip=env.action_range[0],
-            max_action_clip=env.action_range[1])
+        dyn, 
+        min_action_clip=env.action_range[0],
+        max_action_clip=env.action_range[1]
+    )
     mpc.control_horizon_simulate = mpc_config["planning_horizon"]
-    state = env.reset().squeeze()
+    observation = env.reset()
+
+    state = torch.zeros(1, transition_model._state_size).to(transition_model._device)
+    belief = torch.zeros(1, transition_model._belief_size).to(transition_model._device)
+    action = torch.zeros(1, transition_model._act_size).to(transition_model._device)
+
     avg_reward_per_episode = 0
     done = False
     while not done:
-        current_model_state, current_model_belief = transition_model_mpc.observation_to_state_belief(state)
-        current_model_state_repeat = current_model_state.repeat(mpc_config["candidates"], 1)
-        current_model_belief_repeat = current_model_belief.repeat(mpc_config["candidates"], 1)  
+
+        belief, state = transition_model.observation_to_state_belief(
+            state,
+            action.unsqueeze(0),
+            belief,
+            observation
+        )
+
+        current_model_state_repeat = state.repeat(mpc_config["candidates"], 1)
+        current_model_belief_repeat = belief.repeat(mpc_config["candidates"], 1)  
         dyn.model_state = current_model_state_repeat
         dyn.model_belief = current_model_belief_repeat
 
         best_actions = mpc.compute_action_cross_entropy_method(
-            state, 
+            observation, 
             None, # No goal as using sum of rewards to select best action sequence
             num_iterations=mpc_config["optimization_iters"],
             j=mpc_config["candidates"], 
-            k=mpc_config["top_candidates"])
-        action = best_actions[0, :]
+            k=mpc_config["top_candidates"]
+        )
+        action = torch.Tensor(best_actions[0, :])
 
         if action_noise_variance is not None:
-            action += np.random.normal(loc=0, scale=action_noise_variance, size=action.shape)
-        next_state, reward, done, info  = env.step(action)
+            action += torch.normal(torch.zeros_like(action), std=action_noise_variance)
+        next_observation, reward, done, info  = env.step(action.numpy())
 
         if memory is not None:
-            memory.append(state, action, reward, done)
+            memory.append(observation, action.numpy(), reward, done)
             
         avg_reward_per_episode += reward
-        state = next_state.squeeze()
-    # print(f"avg_reward_per_episode is {avg_reward_per_episode}")
+        observation = next_observation
+        action = action.unsqueeze(0).to(transition_model._device)
+
+    env.close()
     return avg_reward_per_episode
 
 def compute_loss(
@@ -254,10 +270,20 @@ def write_video(frames: np.array, title: str, path=''):
     writer.release()
 
 
-def update_belief_and_act(env, transition_model, belief, posterior_state, action, observation):
-    # Infer belief over current state q(s_t|o≤t,a<t) from the history
-    belief, _, _, _, posterior_state, _, _, _ = transition_model(posterior_state, action.unsqueeze(0), belief, transition_model.encode(observation).unsqueeze(dim=0))  # Action and observation need extra time dimension
-    belief, posterior_state = belief.squeeze(dim=0), posterior_state.squeeze(dim=0)
+def update_belief_and_act(
+    env, 
+    transition_model, 
+    posterior_state, 
+    belief, 
+    action, 
+    observation
+):
+    belief, posterior_state = transition_model.observation_to_state_belief(
+        posterior_state, 
+        action.unsqueeze(0), 
+        belief, 
+        observation
+    ) 
     action = -1 + 2*np.random.rand()
     action = -1 + 2*torch.rand(1, env.action_size, device=transition_model._device)
     next_observation, reward, done, _ = env.step(action[0].cpu())

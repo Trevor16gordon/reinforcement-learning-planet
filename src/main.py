@@ -160,7 +160,8 @@ if __name__ == "__main__":
     # 10 episodes of MPC to evaluate the models current performanc. 
     for traj in range(train_config["episodes"]):
 
-        # Training
+        # Set models to train mode
+        transition_model.train()
         for itr in tqdm.tqdm(range(train_config["train_iters"])):
             kl_loss, obs_loss, rew_loss, loss = compute_loss(
                 transition_model,
@@ -171,22 +172,20 @@ if __name__ == "__main__":
                 train_config,
                 args.model
             )    
-
-            losses["kl_loss"].append(kl_loss.item())
-            losses["obs_loss"].append(obs_loss.item())
-            losses["rew_loss"].append(rew_loss.item())
-            losses["sum_loss"].append(loss.item())
-
             # standard back prop step. Includes gradient clipping to help with training the RNN.
             optimiser.zero_grad()
             loss.backward()
             nn.utils.clip_grad_norm_(transition_model.parameters(), train_config["clip_grad_norm"], norm_type=2)
             optimiser.step()
 
-        # enerate a video of the original trajectory alongside the models reconstruction.
+            losses["kl_loss"].append(kl_loss.item())
+            losses["obs_loss"].append(obs_loss.item())
+            losses["rew_loss"].append(rew_loss.item())
+            losses["sum_loss"].append(loss.item())
+
+        # generate a video of the original trajectory alongside the models reconstruction.
         if traj % 5 == 0:
             transition_model.eval()
-
             with torch.no_grad():
                 observation, total_reward, video_frames = env.reset(), 0, []
                 belief = torch.zeros(1, model_config["belief_size"], device=device)
@@ -197,8 +196,8 @@ if __name__ == "__main__":
                     belief, posterior_state, action, next_observation, reward, done = update_belief_and_act(
                         env, 
                         transition_model, 
-                        belief,
                         posterior_state,
+                        belief,
                         action, 
                         observation.to(device=device),
                     )
@@ -207,8 +206,8 @@ if __name__ == "__main__":
                     )
                     observation = next_observation
                     if done:
-                        env.close()
                         break
+            env.close()
             write_video(video_frames, f"{args.model}_{args.env}_{traj}_episodes", "videos")
             transition_model.train()
 
@@ -229,29 +228,30 @@ if __name__ == "__main__":
 
         else:
             # Data Collection using MPC
-            transition_model.eval()
             dyn = LearnedDynamics(args.env, transition_model, env.action_size, env.observation_size)
-            rollout_using_mpc(
-                dyn,
-                transition_model,
-                env,
-                config["mpc_data_collection"],
-                memory=memory,
-                action_noise_variance=config["mpc_data_collection"]["exploration_noise"])
-            transition_model.train()
+            with torch.no_grad():
+                rollout_using_mpc(
+                    dyn,
+                    transition_model,
+                    env,
+                    config["mpc_data_collection"],
+                    memory=memory,
+                    action_noise_variance=config["mpc_data_collection"]["exploration_noise"]
+                )
 
-        if ((traj + 1) % config["test_interval"]) == 0:
-            # Test performance using MPC
+        if ((traj + 1) % config["test_interval"]) == 0 or traj == 0:
             transition_model.eval()
+            # Test performance using MPC
             dyn = LearnedDynamics(args.env, transition_model, env.action_size, env.observation_size)
-            avg_reward_per_episode = rollout_using_mpc(
-                dyn,
-                transition_model,
-                env,
-                config["mpc"],
-                memory=None,
-                action_noise_variance=None
-            )
+            with torch.no_grad():
+                avg_reward_per_episode = rollout_using_mpc(
+                    dyn,
+                    transition_model,
+                    env,
+                    config["mpc"],
+                    memory=None,
+                    action_noise_variance=None
+                )
             total_test_reward += avg_reward_per_episode
             print(f"Test episode completed. Average test reward so far {total_test_reward/num_test} Last test reward {avg_reward_per_episode}")
             num_test += 1

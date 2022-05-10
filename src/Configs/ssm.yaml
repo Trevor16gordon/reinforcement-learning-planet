@@ -3,7 +3,6 @@
 # global_KL_beta value of 1, rather than 0 for the RSSM and RNN models
 
 
-
 project: "E6691 Final: Learning Latent Dynamics for Planning from Pixels"
 authors: 
   - "Sam Fieldman"
@@ -15,7 +14,7 @@ authors:
 ssm:
   activation: "ELU"
   embed_size: 1024
-  hidden_dim: 200
+  hidden_dim: 400
   belief_size: 0
   state_size: 30
 
@@ -58,16 +57,16 @@ train:
   episodes: 1000
   seed_episodes: 5
   clip_grad_norm: 1_000
-  learning_rate: 0.001
+  learning_rate: 0.0005
   lr_schedule: 0
-  adam_epsilon: 0.0001
-  batch_size: 64
+  adam_epsilon: 0.00001
+  batch_size: 50
   train_iters: 100
   seq_length: 50
 
   # weight parameters for KL-divergence and latent overshooting loss terms 
   kl_clip: 3.0
-  global_kl_beta: 1.0
+  global_kl_beta: 1.5
   overshooting_kl_beta: 0
   overshooting_distance: 50
 
@@ -98,7 +97,3 @@ test_interval: 5
 test_episodes: 10
 checkpoint_interval: 25
 updates_per_one_episode_collection: 100
-
-
-# magnitude of the random noise added to out
-# actions while collecting data.
