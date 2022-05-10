@@ -23,7 +23,8 @@ from env import (
 
 import torch
 from torch import optim, nn
-
+from pathlib import Path
+import pandas as pd
 import numpy as np
 import argparse
 import yaml
@@ -33,7 +34,7 @@ import time
 import tqdm
 
 GYM_ENVS = ["InvertedPendulum-v2", "Pendulum-v1", "MountainCar-v0", "CartPole-v1"]
-CONTROL_SUITE_ENVS = ["ant-v2", "cartpole-swingup"]
+CONTROL_SUITE_ENVS = ["cheetah-run", "ant-v2", "cartpole-swingup"]
 
 
 if __name__ == "__main__":
@@ -45,6 +46,8 @@ if __name__ == "__main__":
     parser.add_argument("--seed", type=int, default=1, metavar="S", help="Random seed")
     parser.add_argument( "--env", type=str, default="MountainCar-v0", choices=GYM_ENVS+CONTROL_SUITE_ENVS, help="Gym/Control Suite environment")
     parser.add_argument( "--model", type=str, default="ssm", choices=list(MODEL_DICT.keys()), help="Select the State Space Model to Train.",)
+    parser.add_argument( "--load_model_path", type=str, default=None, help="If given, model will start from this path")
+    parser.add_argument( "--save_results_path", type=str, default="results", help="Path to output file")
     parser.add_argument("--render", type=bool, default=False, help="Render environment")
     parser.add_argument( "--config", type=str, default="base", help="Specify the yaml file to use in setting up experiment.",)
     parser.add_argument( "--config-path", type=str, default="Configs", help="Specify the directory the config file lives in.")
@@ -60,8 +63,9 @@ if __name__ == "__main__":
 
 
     # set up directory for writing experiment results to.
-    results_dir = os.path.join("results", args.id)
-    os.makedirs(results_dir, exist_ok=True)
+    # Make new sub folder for this particular run
+    results_dir = os.path.join(args.save_results_path, time.strftime("%Y-%m-%d_%H-%M-%S"))
+    Path(os.path.join(results_dir, "videos")).mkdir(parents=True, exist_ok=True)
 
     # Set the initial keys for numpy, torch, and the GPU.
     np.random.seed(args.seed)
@@ -97,6 +101,9 @@ if __name__ == "__main__":
     transition_model = MODEL_DICT[args.model](
         env.observation_size, env.action_size, device, **model_config
     ).to(device)
+
+    if args.load_model_path:
+        transition_model.load_state_dict(torch.load(args.load_model_path))
     transition_model.train()
 
 
@@ -141,15 +148,18 @@ if __name__ == "__main__":
     }
     # misc. metrics of interest for later plotting and visualization.
     metrics = {
-        'steps': [],
-        'episodes': [], 
-        'train_rewards': [], 
-        'test_episodes': [], 
-        'test_rewards': [],
-        'max_train_episode_reward': []
+        "steps": [],
+        "episodes": [], 
+        "train_rewards": [], 
+        "test_episodes": [], 
+        "test_rewards": [],
+        "max_train_episode_reward": [],
+        "test_reward_avg": [],
+        "avg_test_reward_so_far": []
     }
     total_test_reward = 0
     num_test = 1
+    test_episode_rewards = []
 
     global_start_time = time.time()
 
@@ -209,29 +219,19 @@ if __name__ == "__main__":
                     if done:
                         env.close()
                         break
-            write_video(video_frames, f"{args.model}_{args.env}_{traj}_episodes", "videos")
+            write_video(video_frames, f"{args.model}_{args.env}_{traj}_episodes", os.path.join(results_dir, "videos"))
             transition_model.train()
 
-        # Print Info
-        if traj % 1 == 0:
-            total_time = int(time.time() - global_start_time)
-            total_secs, total_mins, total_hrs = total_time % 60, (total_time // 60) % 60, total_time // 3600
-            print(f"Total Run Time: {total_hrs:02}:{total_mins:02}:{total_secs:02}\n" \
-                  f"Trajectory {traj}: \n\tTotal Loss: {loss.item():.2f}" \
-                  f"\n\tObservation Loss {obs_loss.item():.2f}"
-                  f"\n\tReward Loss {rew_loss.item():.2f}"
-                  f"\n\tKL Loss {kl_loss.item():.2f}\n"
-            )
+        
 
         if config["mpc_data_collection"]["optimization_iters"] == 0:
             # naive data collection for now. Eventually integrate the MPC code to collect data
-            gather_data(env, memory, 1)
-
+            train_reward = gather_data(env, memory, 1)
         else:
             # Data Collection using MPC
             transition_model.eval()
             dyn = LearnedDynamics(args.env, transition_model, env.action_size, env.observation_size)
-            rollout_using_mpc(
+            train_reward = rollout_using_mpc(
                 dyn,
                 transition_model,
                 env,
@@ -244,18 +244,45 @@ if __name__ == "__main__":
             # Test performance using MPC
             transition_model.eval()
             dyn = LearnedDynamics(args.env, transition_model, env.action_size, env.observation_size)
-            avg_reward_per_episode = rollout_using_mpc(
-                dyn,
-                transition_model,
-                env,
-                config["mpc"],
-                memory=None,
-                action_noise_variance=None
-            )
-            total_test_reward += avg_reward_per_episode
-            print(f"Test episode completed. Average test reward so far {total_test_reward/num_test} Last test reward {avg_reward_per_episode}")
-            num_test += 1
+            test_episode_rewards = []
+            for _ in range(config["test_episodes"]):
+                test_episode_reward = rollout_using_mpc(
+                    dyn,
+                    transition_model,
+                    env,
+                    config["mpc"],
+                    memory=None,
+                    action_noise_variance=None
+                )
+                test_episode_rewards.append(test_episode_reward)
+                total_test_reward += test_episode_reward
+                num_test += 1
+            test_reward_avg = sum(test_episode_rewards)/len(test_episode_rewards)
             transition_model.train()
+
+        metrics["steps"].append(train_config["train_iters"]*traj)
+        metrics["episodes"].append(traj)
+        metrics["train_rewards"].append(train_reward)
+        metrics["test_episodes"].append(num_test)
+        metrics["test_rewards"].append(test_episode_rewards)
+        metrics["test_reward_avg"].append(test_reward_avg)
+        metrics["avg_test_reward_so_far"].append(total_test_reward/num_test)
+
+        # Print Info
+        if traj % 1 == 0:
+            total_time = int(time.time() - global_start_time)
+            total_secs, total_mins, total_hrs = total_time % 60, (total_time // 60) % 60, total_time // 3600
+            print(f"Total Run Time: {total_hrs:02}:{total_mins:02}:{total_secs:02}\n" \
+                  f"Trajectory {traj}: \n\tTotal Loss: {loss.item():.2f}" \
+                  f"\n\tObservation Loss {obs_loss.item():.2f}"
+                  f"\n\tReward Loss {rew_loss.item():.2f}"
+                  f"\n\tKL Loss {kl_loss.item():.2f}\n"
+                  f"\n\tTrain Episode Reward {train_reward:.2f}"
+                  f"\n\tNumber Test Episodes {num_test:.2f}"
+                  f"\n\tTest Episode Rewards {test_episode_rewards:.2f}"
+                  f"\n\tTest Episode Reward Avg {test_reward_avg:.2f}"
+                  f"\n\tCumulative Test Reward Avg {total_test_reward/num_test:.2f}"
+                  )
             
         if (traj + 1) % config["checkpoint_interval"] == 0:
             model_save_info = {
@@ -266,4 +293,7 @@ if __name__ == "__main__":
                 "env_config": config["env"],
                 "seed": args.seed,
                 }
-            torch.save(model_save_info, f"transition_model_{traj}.pt")
+            torch.save(model_save_info, os.path.join(results_dir, f"transition_model_{traj}.pt"))
+
+        pd.DataFrame(losses).to_csv(os.path.join(results_dir, f"losses.csv"))
+        pd.DataFrame(metrics).to_csv(os.path.join(results_dir, f"metrics.csv"))
