@@ -25,7 +25,7 @@ import torch
 from torch import optim, nn
 import numpy as np
 
-import pickle as pkl
+import pandas as pd
 import argparse
 import yaml
 import os
@@ -189,8 +189,6 @@ if __name__ == "__main__":
             if overshooting_kl_loss is not None:
                 losses["overshooting_reward_loss"].append(overshooting_reward_loss.item())
 
-            with open(os.path.join("results", f"{args.model}_config_{args.config}_{args.id}.pkl"), "wb") as file:
-                pkl.dump(losses, file)
 
         # generate a video of the original trajectory alongside the models reconstruction.
         if traj % 5 == 0:
@@ -244,7 +242,7 @@ if __name__ == "__main__":
             # Data Collection using MPC
             dyn = LearnedDynamics(args.env, transition_model, env.action_size, env.observation_size)
             with torch.no_grad():
-                rollout_using_mpc(
+                train_reward = rollout_using_mpc(
                     dyn,
                     transition_model,
                     env,
@@ -257,20 +255,35 @@ if __name__ == "__main__":
             transition_model.eval()
             # Test performance using MPC
             dyn = LearnedDynamics(args.env, transition_model, env.action_size, env.observation_size)
+            test_episode_rewards = []
             with torch.no_grad():
-                avg_reward_per_episode = rollout_using_mpc(
-                    dyn,
-                    transition_model,
-                    env,
-                    config["mpc"],
-                    memory=None,
-                    action_noise_variance=None
-                )
-            total_test_reward += avg_reward_per_episode
-            print(f"Test episode completed. Average test reward so far {total_test_reward/num_test} Last test reward {avg_reward_per_episode}")
+                for _ in range(config["test_episodes"]):
+                    test_episode_reward = rollout_using_mpc(
+                        dyn,
+                        transition_model,
+                        env,
+                        config["mpc"],
+                        memory=None,
+                        action_noise_variance=None
+                    )
+                test_episode_rewards.append(test_episode_reward)
+            test_reward_avg = sum(test_episode_rewards)/len(test_episode_rewards)
+            print(f"Test episode completed. Average test reward: {test_reward_avg}")
             num_test += 1
             transition_model.train()
             
+
+        metrics["steps"].append(train_config["train_iters"]*traj)
+        metrics["episodes"].append(traj)
+        metrics["train_rewards"].append(train_reward)
+        metrics["test_episodes"].append(num_test)
+        metrics["test_rewards"].append(test_episode_rewards)
+        metrics["test_reward_avg"].append(test_reward_avg)
+
+        pd.DataFrame(losses).to_csv(os.path.join(results_dir, f"{args.model}_config_{args.config}_{args.id}_losses.csv"))
+        pd.DataFrame(metrics).to_csv(os.path.join(results_dir, f"{args.model}_config_{args.config}_{args.id}_metrics.csv"))
+
+
         if (traj + 1) % config["checkpoint_interval"] == 0:
             model_save_info = {
                 "model_state_dict" : transition_model.state_dict(),
@@ -281,4 +294,4 @@ if __name__ == "__main__":
                 "env_config": config["env"],
                 "seed": args.seed,
             }
-            torch.save(model_save_info, os.path.join("results", f"{args.model}_config_{args.config}_{args.id}_{traj}.pt"))
+            torch.save(model_save_info, os.path.join(results_dir, f"{args.model}_config_{args.config}_{args.id}_{traj}.pt"))
