@@ -259,7 +259,7 @@ def compute_loss(
         # Ensure that the overshooting value does not exceed the horizon value
         overshooting = train_config["overshooting_distance"]
         horizon = train_config["seq_length"]
-        overshoot_input = []
+        overshooting_input = []
         for h in range(1, overshooting):
             overshooting_dist = min(h + overshooting, horizon - 1) 
             sequence_pad = (0, 0, 0, 0, 0, h - overshooting_dist + overshooting)
@@ -284,7 +284,7 @@ def compute_loss(
             # list order: 1) states, 2) actions, 3) beliefs, 4) nonterminals, 5) loss mask 6) means, 7) std deviation, 8) rewards
         overshooting_input = tuple(zip(*overshooting_input))
 
-        beliefs, prior_states, prior_means, prior_std_devs = transition_model(
+        beliefs, prior_states, prior_means, prior_std_devs, _, _, _, reward_preds = transition_model(
             torch.cat(overshooting_input[0], dim=0), 
             torch.cat(overshooting_input[1], dim=1), 
             torch.cat(overshooting_input[2], dim=0), 
