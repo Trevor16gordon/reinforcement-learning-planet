@@ -33,9 +33,6 @@ import tqdm
 import time
 import tqdm
 
-GYM_ENVS = ["InvertedPendulum-v2", "Pendulum-v1", "MountainCar-v0", "CartPole-v1"]
-CONTROL_SUITE_ENVS = ["ant-v2", "cartpole-swingup"]
-
 
 if __name__ == "__main__":
 
