@@ -13,8 +13,7 @@ PlaNet is also incredibly data-efficient, and outperforms model-free methods fin
 
 Below is an example of the reproduced RSSM model after 70 episodes of training playing cartpole-swing up from the Deepmind Control suite. The video on the left is the real output and the video on the right is the agents world after VAE decoding.
 
-
-
+https://user-images.githubusercontent.com/12552254/167675026-55409b2a-9877-4189-a404-6b94f708a2ca.mp4
 
 
 # Installation
