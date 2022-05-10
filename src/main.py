@@ -71,7 +71,7 @@ if __name__ == "__main__":
         envClass = GymEnv
     elif args.env in CONTROL_SUITE_ENVS:
         envClass = ControlSuiteEnv
-        config["env"]["action_repeat"] = CONTROL_SUITE_ACTION_REPEATS[args.env.split('-')[0]] 
+        config["env"]["action_repeat"] = CONTROL_SUITE_ACTION_REPEATS[args.env.split("-")[0]] 
     else:
         # create comparable wrapper for control suite tasks
         raise NotImplementedError("No Control Suite Wrapper written yet.")
@@ -139,12 +139,12 @@ if __name__ == "__main__":
     }
     # misc. metrics of interest for later plotting and visualization.
     metrics = {
-        'steps': [],
-        'episodes': [], 
-        'train_rewards': [], 
-        'test_episodes': [], 
-        'test_rewards': [],
-        'max_train_episode_reward': []
+        "steps": [],
+        "episodes": [], 
+        "train_rewards": [], 
+        "test_episodes": [], 
+        "test_rewards": [],
+        "test_reward_avg": []
     }
     total_test_reward = 0
     num_test = 1
