@@ -14,7 +14,7 @@ authors:
 ssm:
   activation: "ELU"
   embed_size: 1024
-  hidden_dim: 400
+  hidden_dim: 500
   belief_size: 0
   state_size: 30
 
@@ -47,7 +47,7 @@ memory:
 env:
   symbolic_env: False
   max_episode_length: 1000
-  action_repeat: 8 
+  action_repeat: 2 
   bit_depth: 5
  
 
@@ -57,9 +57,9 @@ train:
   episodes: 1000
   seed_episodes: 5
   clip_grad_norm: 1_000
-  learning_rate: 0.001
+  learning_rate: 0.0005
   lr_schedule: 0
-  adam_epsilon: 0.0001
+  adam_epsilon: 0.00001
   batch_size: 50
   train_iters: 100
   seq_length: 50

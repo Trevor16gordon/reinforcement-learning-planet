@@ -78,55 +78,17 @@ def load_model_from_path(path_to_model):
     transition_model.load_state_dict(checkpoint["state_dict"])
     return transition_model, checkpoint
 
-def gather_reconstructed_images_from_saved_model(path_to_model, rollout_len=10):
-    """Load a saved model and generated original and reconstructed VAE images
-
-    Args:
-        path_to_model (str): Path to .pkl model file
-            The saved checkpoint must contain the following keys:
-            state_dict, env_name, model_config, model, env_config, seed
-        rollout_len (int, optional): Number of images to roll out in a single episode. Defaults to 10.
-
-    Returns:
-         original_images, reconstructed_images (np.array, np.array):
+def rollout_using_mpc(dyn, 
+    transition_model, 
+    env, 
+    mpc_config, 
+    memory=None, 
+    action_noise_variance=None,
+    decode_to_video=False, 
+    max_frames=None,
+):
     """
-
-    transition_model, checkpoint = load_model_from_path(path_to_model)
-    env_name = checkpoint["env_name"]
-    
-    (observations, actions, rewards, nonterminals) = gather_data_for_testing(env_name, rollout_len)
-
-    init_belief = torch.zeros(1, 0)
-    init_state = torch.zeros(1, 30)
-
-    encoded_observations = transition_model.encode(observations)
-
-    (
-        beliefs,
-        prior_states,
-        prior_means,
-        prior_stddvs,
-        posterior_states,
-        posterior_means,
-        posterior_stddvs,
-        reward_preds,
-    ) = transition_model(
-        init_state,
-        actions[:-1],
-        init_belief,
-        encoded_observations[1:],
-        nonterminals[:-1]
-    )
-
-    reconstructed_obs = transition_model._decoder(posterior_states, beliefs)
-    reconstructed_images = reconstructed_obs.permute(0, 2, 3, 1).detach().numpy()
-    original_images = observations.squeeze().permute(0, 2, 3, 1).detach().numpy()
-
-    return original_images, reconstructed_images
-
-def rollout_using_mpc(dyn, transition_model, env, mpc_config, memory=None, action_noise_variance=None):
-    """Rollout an episode using the MPC to choose the best actions
-
+    Rollout an episode using the MPC to choose the best actions
     Args:
         dyn (LearnedDynamics): 
         transition_model (Models.Base): The trained transition model
@@ -135,6 +97,8 @@ def rollout_using_mpc(dyn, transition_model, env, mpc_config, memory=None, actio
         max_episode_len (int): The max length of episode
         memory (ExperienceReplay, optional): If given, the experience will be added to the memory buffer
         action_noise_variance (int, optional): If given, uniform noise with this variance will be added to the action
+        decode_to_video (bool, optional): Optionally decode state back into predictied observations to visualize. Defaults to false
+        max_frames (int, optional): If given, the rollout will end after this many frames. Defaults to None
     """
     mpc = ModelPredictiveControl(
         dyn, 
@@ -150,8 +114,11 @@ def rollout_using_mpc(dyn, transition_model, env, mpc_config, memory=None, actio
 
     avg_reward_per_episode = 0
     done = False
+    video_frames = []
+    i = 0
     while not done:
-
+        i += 1
+        
         belief, state = transition_model.observation_to_state_belief(
             state,
             action.unsqueeze(0),
@@ -179,13 +146,20 @@ def rollout_using_mpc(dyn, transition_model, env, mpc_config, memory=None, actio
 
         if memory is not None:
             memory.append(observation, action.numpy(), reward, done)
-            
+           
+        if decode_to_video:
+            video_frames.append((torch.cat([observation.squeeze(), transition_model.decode(state, belief).squeeze().cpu()], dim=2) + 0.5).numpy())
+
+        if max_frames is not None and if i > max_frames:
+            break
+
         avg_reward_per_episode += reward
         observation = next_observation
         action = action.unsqueeze(0).to(transition_model._device)
 
     env.close()
-    return avg_reward_per_episode
+    return avg_reward_per_episode, video_frames
+
 
 def compute_loss(
     transition_model: TransitionModel,
@@ -331,23 +305,3 @@ def write_video(frames: np.array, title: str, path=''):
     for frame in frames:
         writer.write(frame)
     writer.release()
-
-
-def update_belief_and_act(
-    env, 
-    transition_model, 
-    posterior_state, 
-    belief, 
-    action, 
-    observation
-):
-    belief, posterior_state = transition_model.observation_to_state_belief(
-        posterior_state, 
-        action.unsqueeze(0), 
-        belief, 
-        observation
-    ) 
-    action = -1 + 2*np.random.rand()
-    action = -1 + 2*torch.rand(1, env.action_size, device=transition_model._device)
-    next_observation, reward, done, _ = env.step(action[0].cpu())
-    return belief, posterior_state, action, next_observation, reward, done
