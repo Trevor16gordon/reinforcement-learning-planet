@@ -92,7 +92,5 @@ mpc_data_collection:
 test_interval: 10
 test_episodes: 5
 checkpoint_interval: 25
-
-# magnitude of the random noise added to out
-# actions while collecting data.
-action_noise: 0.3
+save_video_interval: 5
+save_video_n_frames: 500

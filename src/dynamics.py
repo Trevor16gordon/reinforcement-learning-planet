@@ -186,7 +186,7 @@ class ModelPredictiveControl():
             stds = torch.std(top_action_seqs, dim=1, keepdim=True)
          
         #best_action_seq = candidate_actions[:, ids[0], :]
-        means = means.reshape(-1, 1)
+        means = means.squeeze(1)
         ret = means.cpu().detach().numpy()
         return ret
 

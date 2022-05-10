@@ -97,4 +97,5 @@ mpc_data_collection:
 test_interval: 10
 test_episodes: 5
 checkpoint_interval: 25
-updates_per_one_episode_collection: 100
+save_video_interval: 5
+save_video_n_frames: 500

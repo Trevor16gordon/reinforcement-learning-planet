@@ -61,7 +61,7 @@ if __name__ == "__main__":
 
     # set up directory for writing experiment results to.
     results_dir = os.path.join("results", args.id)
-    video_dir = os.path.join(results_dir, "videos"))
+    video_dir = os.path.join(results_dir, "videos")
     os.makedirs(results_dir, exist_ok=True)
     os.makedirs(video_dir, exist_ok=True)
 
