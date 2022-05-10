@@ -32,9 +32,10 @@ import os
 import tqdm
 import time
 import tqdm
+import pdb
 
 GYM_ENVS = ["InvertedPendulum-v2", "Pendulum-v1", "MountainCar-v0", "CartPole-v1"]
-CONTROL_SUITE_ENVS = ["cheetah-run", "ant-v2", "cartpole-swingup"]
+CONTROL_SUITE_ENVS = ["cheetah-run", "ant-v2", "cartpole-swingup", "cartpole-balance"]
 
 
 if __name__ == "__main__":
@@ -51,6 +52,8 @@ if __name__ == "__main__":
     parser.add_argument("--render", type=bool, default=False, help="Render environment")
     parser.add_argument( "--config", type=str, default="base", help="Specify the yaml file to use in setting up experiment.",)
     parser.add_argument( "--config-path", type=str, default="Configs", help="Specify the directory the config file lives in.")
+    parser.add_argument( "--force_same_output_folder", type=int, default=0,
+                    help="If true (1), all results will be saved (and possibly overwritten to a default folder")
 
     args = parser.parse_args()
 
@@ -63,8 +66,12 @@ if __name__ == "__main__":
 
 
     # set up directory for writing experiment results to.
-    # Make new sub folder for this particular run
-    results_dir = os.path.join(args.save_results_path, time.strftime("%Y-%m-%d_%H-%M-%S"))
+    # Make new sub folder for this particular run unless we want to overwrite files
+    if not args.force_same_output_folder:
+        time_folder = time.strftime("%Y-%m-%d_%H-%M-%S")
+    else:
+        time_folder = "fixed_time_folder"
+    results_dir = os.path.join(args.save_results_path, time_folder)
     Path(os.path.join(results_dir, "videos")).mkdir(parents=True, exist_ok=True)
 
     # Set the initial keys for numpy, torch, and the GPU.
@@ -103,7 +110,7 @@ if __name__ == "__main__":
     ).to(device)
 
     if args.load_model_path:
-        transition_model.load_state_dict(torch.load(args.load_model_path))
+        transition_model.load_state_dict(torch.load(args.load_model_path)["model_state_dict"])
     transition_model.train()
 
 
@@ -143,8 +150,8 @@ if __name__ == "__main__":
         "rew_loss": [],
         "kl_loss":  [],
         "sum_loss": [],
-        "LOS_loss": [],
-        "GP_loss":  []
+        #"LOS_loss": [], #Note, if uncommented, need to append everything other losses are added
+        #"GP_loss":  []
     }
     # misc. metrics of interest for later plotting and visualization.
     metrics = {
@@ -153,11 +160,12 @@ if __name__ == "__main__":
         "train_rewards": [], 
         "test_episodes": [], 
         "test_rewards": [],
-        "max_train_episode_reward": [],
         "test_reward_avg": [],
         "avg_test_reward_so_far": []
     }
+    test_reward_avg = 0
     total_test_reward = 0
+    avg_test_reward_so_far = 0
     num_test = 1
     test_episode_rewards = []
 
@@ -258,6 +266,7 @@ if __name__ == "__main__":
                 total_test_reward += test_episode_reward
                 num_test += 1
             test_reward_avg = sum(test_episode_rewards)/len(test_episode_rewards)
+            avg_test_reward_so_far = total_test_reward/num_test
             transition_model.train()
 
         metrics["steps"].append(train_config["train_iters"]*traj)
@@ -266,7 +275,7 @@ if __name__ == "__main__":
         metrics["test_episodes"].append(num_test)
         metrics["test_rewards"].append(test_episode_rewards)
         metrics["test_reward_avg"].append(test_reward_avg)
-        metrics["avg_test_reward_so_far"].append(total_test_reward/num_test)
+        metrics["avg_test_reward_so_far"].append(avg_test_reward_so_far)
 
         # Print Info
         if traj % 1 == 0:
@@ -279,7 +288,7 @@ if __name__ == "__main__":
                   f"\n\tKL Loss {kl_loss.item():.2f}\n"
                   f"\n\tTrain Episode Reward {train_reward:.2f}"
                   f"\n\tNumber Test Episodes {num_test:.2f}"
-                  f"\n\tTest Episode Rewards {test_episode_rewards:.2f}"
+                  f"\n\tTest Episode Rewards {test_episode_rewards}"
                   f"\n\tTest Episode Reward Avg {test_reward_avg:.2f}"
                   f"\n\tCumulative Test Reward Avg {total_test_reward/num_test:.2f}"
                   )
