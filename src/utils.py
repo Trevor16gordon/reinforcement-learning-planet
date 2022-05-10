@@ -124,7 +124,15 @@ def gather_reconstructed_images_from_saved_model(path_to_model, rollout_len=10):
 
     return original_images, reconstructed_images
 
-def rollout_using_mpc(dyn, transition_model, env, mpc_config, memory=None, action_noise_variance=None):
+def rollout_using_mpc(dyn, 
+        transition_model, 
+        env, 
+        mpc_config, 
+        memory=None, 
+        action_noise_variance=None
+        decode_to_video=False, 
+        max_frames=None,
+        ):
     """Rollout an episode using the MPC to choose the best actions
 
     Args:
@@ -135,6 +143,8 @@ def rollout_using_mpc(dyn, transition_model, env, mpc_config, memory=None, actio
         max_episode_len (int): The max length of episode
         memory (ExperienceReplay, optional): If given, the experience will be added to the memory buffer
         action_noise_variance (int, optional): If given, uniform noise with this variance will be added to the action
+        decode_to_video (bool, optional): Optionally decode state back into predictied observations to visualize. Defaults to false
+        max_frames (int, optional): If given, the rollout will end after this many frames. Defaults to None
     """
     mpc = ModelPredictiveControl(
         dyn, 
@@ -150,8 +160,14 @@ def rollout_using_mpc(dyn, transition_model, env, mpc_config, memory=None, actio
 
     avg_reward_per_episode = 0
     done = False
+    video_frames = []
+    i = 0
     while not done:
-
+        i += 1
+        if (max_frames is not None):
+            if i > max_frames:
+                break
+        
         belief, state = transition_model.observation_to_state_belief(
             state,
             action.unsqueeze(0),
@@ -179,13 +195,16 @@ def rollout_using_mpc(dyn, transition_model, env, mpc_config, memory=None, actio
 
         if memory is not None:
             memory.append(observation, action.numpy(), reward, done)
-            
+           
+        if decode_to_video:
+            video_frames.append((torch.cat([observation.squeeze(), transition_model.decode(state, belief).squeeze().cpu()], dim=2) + 0.5).numpy())
+
         avg_reward_per_episode += reward
         observation = next_observation
         action = action.unsqueeze(0).to(transition_model._device)
 
     env.close()
-    return avg_reward_per_episode
+    return avg_reward_per_episode, video_frames
 
 def compute_loss(
     transition_model: TransitionModel,

@@ -243,14 +243,15 @@ if __name__ == "__main__":
         else:
             dyn = LearnedDynamics(args.env, transition_model, env.action_size, env.observation_size)
             with torch.no_grad():
-                train_reward = rollout_using_mpc(
+                train_reward, vid_frames = rollout_using_mpc(
                     dyn,
                     transition_model,
                     env,
                     config["mpc_data_collection"],
                     memory=memory,
-                    action_noise_variance=config["mpc_data_collection"]["exploration_noise"]
-                )
+                    action_noise_variance=config["mpc_data_collection"]["exploration_noise"],
+                    decode_to_video=False,
+                    )
 
         if (traj + 1) % config["test_interval"] == 0 or traj == 0:
             transition_model.eval()
@@ -259,13 +260,14 @@ if __name__ == "__main__":
             test_episode_rewards = []
             with torch.no_grad():
                 for _ in range(config["test_episodes"]):
-                    test_episode_reward = rollout_using_mpc(
+                    test_episode_reward, vid_frames = rollout_using_mpc(
                         dyn,
                         transition_model,
                         env,
                         config["mpc"],
                         memory=None,
-                        action_noise_variance=None
+                        action_noise_variance=None,
+                        decode_to_video=False,
                     )
                     test_episode_rewards.append(test_episode_reward)
             test_reward_avg = sum(test_episode_rewards)/len(test_episode_rewards)
