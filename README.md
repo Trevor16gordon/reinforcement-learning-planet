@@ -13,7 +13,7 @@ PlaNet is also incredibly data-efficient, and outperforms model-free methods fin
 
 A video our our agent learning to play cartpole swing up is shown below. This model was trained with the RSSM model for 250 episodes. The video on the left is the real output and the video on the right is the agents world after VAE decoding.
 
-(video)["https://github.com/Trevor16gordon/reinforcement-learning-planet/blob/trevor_develop2/data/results/cartpole_learning.gif"]
+!(video)["https://github.com/Trevor16gordon/reinforcement-learning-planet/blob/trevor_develop2/data/results/cartpole_learning.gif"]
 
 
 
