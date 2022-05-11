@@ -1,0 +1,29 @@
+gym
+pytorch
+numpy
+stable-baselines3
+tqdm
+mujoco-py
+opencv-python
+pyyaml
+dm_control
+
+
+# Please reference https://github.com/deepmind/dm_control for dm_control setup instructions
+
+# These were useful installation instructions that I needed but might be different fro you
+# sudo apt-get install -y libglew-dev ??? for dm_control
+# tar -xvzf mujoco210-linux-x86_64.tar.gz 
+# https://mujoco.org/download/mujoco210-linux-x86_64.tar.gz
+# mkdir ~/.mujoco
+# mv mujoco210 ~/.mujoco/mujoco210
+
+# export MUJOCO_GL="egl"
+# export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:~/.mujoco/mujoco200/bin
+# export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/usr/lib/x86_64-linux-gnu/nvidia-opengl/
+# MUJOCO_GL=egl
+
+
+
+
+
