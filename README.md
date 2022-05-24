@@ -15,7 +15,7 @@ A video our our agent learning to play cartpole swing up is shown below. This mo
 
 ![video](https://github.com/Trevor16gordon/reinforcement-learning-planet/blob/trevor_develop2/data/results/cartpole_learning.gif)
 
-
+For more details, please see this [attached report](https://github.com/Trevor16gordon/reinforcement-learning-planet/blob/main/Advanced_Deep_Learning_Final_Project__PlaNet.pdf).
 
 # Installation
 To install ```pip install -r requirements.txt```
